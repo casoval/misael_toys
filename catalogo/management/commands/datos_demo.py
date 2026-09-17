@@ -8,7 +8,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         config = ConfiguracionSitio.get()
         config.nombre_tienda = "Misael Toys"
-        config.texto_bienvenida = "Jugar · Explorar · Aprender — juguetes y objetos de estimulación impresos en 3D, pensados junto a nuestro equipo de terapeutas."
+        config.texto_bienvenida = "Jugar · Explorar · Aprender — juguetes sensoriales impresos en 3D, pensados junto a nuestro equipo de terapeutas."
         config.whatsapp_numero = "59170000000"
         config.telefono = "+591 700 00000"
         # Datos de ejemplo para el cálculo de costo por hora de impresora

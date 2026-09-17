@@ -248,7 +248,7 @@ class ConfiguracionSitio(models.Model):
     email_contacto = models.EmailField(blank=True)
     texto_bienvenida = models.CharField(
         max_length=250, blank=True,
-        default="Jugar · Explorar · Aprender — juguetes y objetos de estimulación impresos en 3D",
+        default="Jugar · Explorar · Aprender — juguetes sensoriales impresos en 3D",
     )
     horario_atencion = models.CharField(max_length=150, blank=True)
 

@@ -1,6 +1,6 @@
 # Misael Toys
 
-Catálogo público de juguetes y objetos de estimulación impresos en 3D.
+Catálogo público de juguetes sensoriales impresos en 3D.
 Proyecto **totalmente independiente** del sistema del centro de terapias
 (otra base de datos, otro repo, pensado para vivir en `tienda.neuromisael.com`).
 
