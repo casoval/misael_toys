@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block titulo %}Página no encontrada — Misael Toys{% endblock %}
+{% block contenido %}
+<div class="detalle" style="text-align:center; padding-top:60px;">
+  <h1>No encontramos esa página</h1>
+  <p style="color:var(--ink-soft); margin-top:10px;">
+    Puede que el producto ya no esté disponible o el link esté mal escrito.
+  </p>
+  <a href="{% url 'catalogo:home' %}" class="btn-whatsapp" style="margin-top:20px;">Volver al catálogo</a>
+</div>
+{% endblock %}

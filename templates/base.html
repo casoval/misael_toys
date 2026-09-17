@@ -1,0 +1,53 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block titulo %}Misael Toys{% endblock %}</title>
+  <meta name="description" content="{% block meta_descripcion %}Jugar · Explorar · Aprender — juguetes y objetos de estimulación impresos en 3D{% endblock %}">
+  <link rel="icon" type="image/png" href="{% static 'img/favicon.png' %}">
+
+  {% block meta_og %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.nombre_tienda|default:'Misael Toys' }}">
+  <meta property="og:title" content="{{ config.nombre_tienda|default:'Misael Toys' }}">
+  <meta property="og:description" content="{{ config.texto_bienvenida }}">
+  <meta property="og:image" content="{% static 'img/logo.png' %}">
+  {% endblock %}
+
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="{% url 'catalogo:home' %}" class="marca">
+        <img src="{% static 'img/logo.png' %}" alt="Misael Toys — Jugar, Explorar, Aprender" class="logo-header">
+      </a>
+
+      <form class="buscador" method="get" action="{% url 'catalogo:home' %}">
+        <input type="search" name="q" placeholder="Buscar productos..." value="{{ q_actual }}">
+        {% if categoria_actual %}<input type="hidden" name="categoria" value="{{ categoria_actual }}">{% endif %}
+        {% if precio_min_actual %}<input type="hidden" name="precio_min" value="{{ precio_min_actual }}">{% endif %}
+        {% if precio_max_actual %}<input type="hidden" name="precio_max" value="{{ precio_max_actual }}">{% endif %}
+        {% for v in valores_seleccionados %}<input type="hidden" name="valor" value="{{ v }}">{% endfor %}
+      </form>
+
+      {% if config.whatsapp_numero or config.telefono %}
+      <div class="contacto-header">
+        {% if config.telefono %}📞 {{ config.telefono }}{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </header>
+
+  {% block contenido %}{% endblock %}
+
+  <footer class="footer">
+    &copy; {% now "Y" %} {{ config.nombre_tienda|default:"Misael Toys" }} — hecho a mano, impreso en 3D.
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block titulo %}{{ config.nombre_tienda|default:"Misael Toys" }}{% endblock %}
+
+{% block contenido %}
+
+<div class="hero-inicio">
+  <img src="{% static 'img/logo.png' %}" alt="Misael Toys" class="logo-hero">
+  <p class="intro">{{ config.texto_bienvenida }}</p>
+</div>
+
+<div class="layout">
+
+  <!-- Filtros: todo lo que ve aquí lo controla el admin (categorías y atributos que cree) -->
+  <!-- <details> para que en celular se pueda cerrar y ver los productos sin scroll infinito -->
+  <details class="filtros" open>
+    <summary class="filtros-titulo-movil">Filtros</summary>
+    <form id="form-filtros" method="get" action="{% url 'catalogo:home' %}"
+          hx-get="{% url 'catalogo:home' %}" hx-target="#resultado-productos"
+          hx-push-url="true" hx-trigger="change">
+
+      <input type="hidden" name="q" value="{{ q_actual }}">
+
+      <div class="filtro-grupo">
+        <div class="filtro-titulo">Categoría</div>
+        <label class="filtro-opcion">
+          <input type="radio" name="categoria" value="" {% if not categoria_actual %}checked{% endif %}>
+          Todas
+        </label>
+        {% for cat in categorias %}
+        <label class="filtro-opcion">
+          <input type="radio" name="categoria" value="{{ cat.slug }}" {% if categoria_actual == cat.slug %}checked{% endif %}>
+          {{ cat.nombre }}
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="filtro-grupo">
+        <div class="filtro-titulo">Precio (Bs.)</div>
+        <div class="rango-precio">
+          <input type="number" name="precio_min" placeholder="Mín" value="{{ precio_min_actual }}" min="0">
+          <input type="number" name="precio_max" placeholder="Máx" value="{{ precio_max_actual }}" min="0">
+        </div>
+        <button type="submit" class="btn-filtrar">Aplicar</button>
+      </div>
+
+      {% for atributo in atributos %}
+      <div class="filtro-grupo">
+        <div class="filtro-titulo">{{ atributo.nombre }}</div>
+        {% for valor in atributo.valores.all %}
+        {% if valor.color_hex %}
+        <label class="filtro-opcion filtro-color" title="{{ valor.valor }}">
+          <input type="checkbox" name="valor" value="{{ valor.id }}"
+                 {% if valor.id|stringformat:"s" in valores_seleccionados %}checked{% endif %}>
+          {% if valor.es_multicolor %}
+          <span class="swatch swatch-multicolor"></span>
+          {% else %}
+          <span class="swatch" style="background-color: {{ valor.color_hex }};"></span>
+          {% endif %}
+          <span class="sr-only">{{ valor.valor }}</span>
+        </label>
+        {% else %}
+        <label class="filtro-opcion">
+          <input type="checkbox" name="valor" value="{{ valor.id }}"
+                 {% if valor.id|stringformat:"s" in valores_seleccionados %}checked{% endif %}>
+          {{ valor.valor }}
+        </label>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+
+      <a href="{% url 'catalogo:home' %}" class="limpiar-filtros">Limpiar filtros</a>
+    </form>
+  </details>
+
+  <!-- Resultados: esta parte se reemplaza sola al cambiar un filtro (sin recargar la página) -->
+  <section id="resultado-productos">
+    {% include "catalogo/_grid_productos.html" %}
+  </section>
+
+</div>
+{% endblock %}

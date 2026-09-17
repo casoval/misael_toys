@@ -1,0 +1,10 @@
+{% load static %}
+<button type="button"
+        class="btn-me-gusta {% if ya_dio_like %}activo{% endif %}"
+        hx-post="{% url 'catalogo:toggle_like' producto.slug %}"
+        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+        hx-target="this"
+        hx-swap="outerHTML">
+  {% if ya_dio_like %}👍 Te gusta{% else %}👍 Me gusta{% endif %}
+  <span class="contador-likes">{{ producto.total_likes }}</span>
+</button>

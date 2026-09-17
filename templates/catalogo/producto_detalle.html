@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block titulo %}{{ producto.nombre }} — {{ config.nombre_tienda }}{% endblock %}
+{% block meta_descripcion %}{{ producto.descripcion_corta|default:producto.descripcion|truncatechars:160 }}{% endblock %}
+
+{% block meta_og %}
+<meta property="og:type" content="product">
+<meta property="og:site_name" content="{{ config.nombre_tienda }}">
+<meta property="og:title" content="{{ producto.nombre }} — Bs. {{ producto.precio|floatformat:'-2' }}">
+<meta property="og:description" content="{{ producto.descripcion_corta|default:producto.descripcion|truncatechars:160 }}">
+<meta property="og:url" content="{{ url_absoluta }}">
+{% if imagen_absoluta %}<meta property="og:image" content="{{ imagen_absoluta }}">{% endif %}
+{% endblock %}
+
+{% block contenido %}
+<div class="detalle">
+  <a href="{% url 'catalogo:home' %}" class="detalle-volver">&larr; Volver al catálogo</a>
+
+  <div class="detalle-grid">
+    <div>
+      {% with primera=producto.imagenes.first %}
+      <div class="detalle-imagen-principal" id="imagen-principal">
+        {% if primera %}
+          <img src="{{ primera.imagen.url }}" alt="{{ producto.nombre }}" id="img-grande">
+        {% else %}
+          <span class="sin-imagen">Sin foto aún</span>
+        {% endif %}
+      </div>
+      {% endwith %}
+
+      {% if producto.imagenes.count > 1 %}
+      <div class="galeria-miniaturas">
+        {% for img in producto.imagenes.all %}
+        <img src="{{ img.imagen.url }}" alt="{{ producto.nombre }}"
+             onclick="document.getElementById('img-grande').src=this.src">
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div>
+      {% if producto.categoria %}<span class="tarjeta-categoria">{{ producto.categoria.nombre }}</span>{% endif %}
+      <h1>{{ producto.nombre }}</h1>
+      <div class="detalle-precio-fila">
+        <div class="detalle-precio">Bs. {{ producto.precio|floatformat:'-2' }}</div>
+        {% include "catalogo/_boton_like.html" %}
+      </div>
+
+      {% if producto.atributos.all %}
+      <div class="detalle-atributos">
+        {% for valor in producto.atributos.all %}
+        {% if valor.color_hex %}
+        <span class="chip-atributo chip-color">
+          <b>{{ valor.atributo.nombre }}:</b>
+          {% if valor.es_multicolor %}
+          <span class="swatch swatch-multicolor swatch-chip"></span>
+          {% else %}
+          <span class="swatch swatch-chip" style="background-color: {{ valor.color_hex }};"></span>
+          {% endif %}
+          {{ valor.valor }}
+        </span>
+        {% else %}
+        <span class="chip-atributo"><b>{{ valor.atributo.nombre }}:</b> {{ valor.valor }}</span>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if whatsapp_url %}
+      <a href="{{ whatsapp_url }}" target="_blank" rel="noopener" class="btn-whatsapp">
+        Consultar por WhatsApp
+      </a>
+      {% elif config.telefono or config.email_contacto %}
+      <p>Para consultar sobre este producto, contáctanos:
+        {% if config.telefono %}{{ config.telefono }}{% endif %}
+        {% if config.email_contacto %} · {{ config.email_contacto }}{% endif %}
+      </p>
+      {% endif %}
+
+      {% if producto.descripcion %}
+      <div class="detalle-descripcion">{{ producto.descripcion|linebreaks }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if relacionados %}
+  <div class="relacionados">
+    <h2>Otros productos de {{ producto.categoria.nombre }}</h2>
+    <div class="grid-productos">
+      {% for r in relacionados %}
+      <a href="{{ r.get_absolute_url }}" class="tarjeta-producto">
+        <div class="tarjeta-imagen">
+          {% if r.imagen_principal %}
+            <img src="{{ r.imagen_principal }}" alt="{{ r.nombre }}">
+          {% else %}
+            <span class="sin-imagen">Sin foto aún</span>
+          {% endif %}
+        </div>
+        <div class="tarjeta-cuerpo">
+          <div class="tarjeta-nombre">{{ r.nombre }}</div>
+          <div class="tarjeta-precio">Bs. {{ r.precio|floatformat:'-2' }}</div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

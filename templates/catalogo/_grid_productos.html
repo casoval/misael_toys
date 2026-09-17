@@ -1,0 +1,44 @@
+{% load static %}
+<div class="grid-resultado-header">
+  <span class="conteo-resultados">{{ total_resultados }} producto{{ total_resultados|pluralize }}</span>
+</div>
+
+{% if productos %}
+<div class="grid-productos">
+  {% for producto in productos %}
+  <a href="{{ producto.get_absolute_url }}" class="tarjeta-producto">
+    <div class="tarjeta-imagen">
+      {% if producto.imagen_principal %}
+        <img src="{{ producto.imagen_principal }}" alt="{{ producto.nombre }}">
+      {% else %}
+        <span class="sin-imagen">Sin foto aún</span>
+      {% endif %}
+    </div>
+    <div class="tarjeta-cuerpo">
+      {% if producto.destacado %}<span class="badge-destacado">Destacado</span>{% endif %}
+      {% if producto.categoria %}<span class="tarjeta-categoria">{{ producto.categoria.nombre }}</span>{% endif %}
+      <div class="tarjeta-nombre">{{ producto.nombre }}</div>
+      {% if producto.descripcion_corta %}<div class="tarjeta-desc">{{ producto.descripcion_corta }}</div>{% endif %}
+      <div class="tarjeta-precio">Bs. {{ producto.precio|floatformat:'-2' }}</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% if productos.has_other_pages %}
+<nav class="paginacion">
+  {% if productos.has_previous %}
+  <a href="?{{ querystring_sin_pagina }}&page={{ productos.previous_page_number }}"
+     hx-get="?{{ querystring_sin_pagina }}&page={{ productos.previous_page_number }}"
+     hx-target="#resultado-productos" hx-push-url="true">&larr; Anterior</a>
+  {% endif %}
+  <span class="paginacion-actual">Página {{ productos.number }} de {{ productos.paginator.num_pages }}</span>
+  {% if productos.has_next %}
+  <a href="?{{ querystring_sin_pagina }}&page={{ productos.next_page_number }}"
+     hx-get="?{{ querystring_sin_pagina }}&page={{ productos.next_page_number }}"
+     hx-target="#resultado-productos" hx-push-url="true">Siguiente &rarr;</a>
+  {% endif %}
+</nav>
+{% endif %}
+{% else %}
+<div class="sin-resultados">No encontramos productos con esos filtros. Prueba quitando alguno.</div>
+{% endif %}
