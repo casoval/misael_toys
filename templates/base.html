@@ -24,7 +24,11 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a href="{% url 'catalogo:home' %}" class="marca">
-        <img src="{% static 'img/logo.png' %}" alt="Misael Toys — Jugar, Explorar, Aprender" class="logo-header">
+        <img src="{% static 'img/favicon.png' %}" alt="" class="logo-header" aria-hidden="true">
+        <span class="marca-texto">
+          <span style="color:#005CB1;">MISAEL</span>
+          <span style="color:#01B5BD;">T</span><span style="color:#FCD62E;">O</span><span style="color:#F9242E;">Y</span><span style="color:#4DC627;">S</span>
+        </span>
       </a>
 
       <form class="buscador" method="get" action="{% url 'catalogo:home' %}">

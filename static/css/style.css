@@ -58,29 +58,48 @@ a:hover { color: var(--teal-dark); }
   white-space: nowrap;
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 .logo-header {
-  height: 46px;
+  height: 40px;
   width: auto;
   display: block;
+}
+
+.marca-texto {
+  font-family: 'Baloo 2', 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: 0.01em;
 }
 
 .hero-inicio {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 22px 20px 4px;
-  text-align: center;
+  padding: 26px 20px 10px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  text-align: left;
 }
 
 .logo-hero {
-  max-height: 130px;
+  max-height: 150px;
   width: auto;
-  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 700px) {
+  .hero-inicio {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+  }
 }
 
 @media (max-width: 600px) {
-  .logo-hero { max-height: 90px; }
+  .logo-hero { max-height: 100px; }
 }
 
 .marca span {
@@ -113,13 +132,22 @@ a:hover { color: var(--teal-dark); }
   white-space: nowrap;
 }
 
-/* --- Intro breve (nada de hero grande, va directo al catálogo) --- */
+/* --- Intro: junto al logo, letra grande y colorida --- */
 .intro {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 18px 20px 4px;
-  color: var(--ink-soft);
-  font-size: 0.98rem;
+  margin: 0;
+  color: var(--teal-dark);
+  font-family: 'Baloo 2', 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 1.4rem;
+  line-height: 1.4;
+  background: linear-gradient(90deg, var(--teal-dark) 0%, var(--teal) 35%, var(--marigold-dark) 70%, var(--marigold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@media (max-width: 700px) {
+  .intro { font-size: 1.15rem; }
 }
 
 /* --- Layout principal --- */
