@@ -1,5 +1,7 @@
 asgiref==3.12.1
+cloudinary==1.46.2
 Django==6.1.1
+django-cloudinary-storage==0.3.0
 pillow==12.3.0
 psycopg2-binary==2.9.11
 python-decouple==3.8

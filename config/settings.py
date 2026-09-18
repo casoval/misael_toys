@@ -38,6 +38,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # Cloudinary (fotos de productos)
+    'cloudinary_storage',
+    'cloudinary',
+
     'catalogo',
 ]
 
@@ -145,10 +150,31 @@ STORAGES = {
 }
 
 # Archivos subidos por el admin (fotos de productos).
-# En producción esto debería apuntar a almacenamiento externo (ej. Cloudinary/S3)
-# en vez del disco del servidor, para no perderlas si el VPS se reinstala.
+#
+# Si hay credenciales de Cloudinary en el .env, las fotos se suben directo a
+# Cloudinary (recomendado: no dependen del disco del VPS, no se pierden si el
+# servidor se reinstala). Si no hay credenciales, se guardan en la carpeta
+# media/ local del servidor.
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+CLOUDINARY_CLOUD_NAME = config('CLOUDINARY_CLOUD_NAME', default='')
+CLOUDINARY_API_KEY = config('CLOUDINARY_API_KEY', default='')
+CLOUDINARY_API_SECRET = config('CLOUDINARY_API_SECRET', default='')
+
+if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
+    CLOUDINARY_STORAGE = {
+        'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
+        'API_KEY': CLOUDINARY_API_KEY,
+        'API_SECRET': CLOUDINARY_API_SECRET,
+    }
+    STORAGES['default'] = {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'}
+else:
+    print(
+        "⚠️  Cloudinary no está configurado (faltan CLOUDINARY_CLOUD_NAME / "
+        "CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET en tu .env). Las fotos de "
+        "productos se guardarán en la carpeta media/ local. Ver .env.example."
+    )
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
