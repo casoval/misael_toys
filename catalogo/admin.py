@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from .models import Categoria, Atributo, ValorAtributo, Producto, ImagenProducto, ConfiguracionSitio, Filamento
 
 
@@ -76,7 +77,7 @@ class ProductoAdmin(admin.ModelAdmin):
     def precio_sugerido_detalle(self, obj):
         costo, sugerido = obj.calcular_costo_y_precio_sugerido()
         if costo is None:
-            return format_html(
+            return mark_safe(
                 "<span style='color:#999'>Completa filamento, peso y horas de impresión "
                 "para ver el cálculo.</span>"
             )
