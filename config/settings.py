@@ -43,6 +43,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -131,10 +132,21 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# whitenoise sirve el CSS/imágenes de static/ directamente desde Django, en
+# cualquier entorno (con DEBUG=True o False) — así no depende de que Nginx
+# esté configurado aparte para servir esos archivos.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
+
 # Archivos subidos por el admin (fotos de productos).
-# En producción esto debería apuntar a almacenamiento externo (ej. Cloudinary/S3),
-# igual que en el proyecto del centro de terapias, pero para desarrollo local
-# basta con guardarlos en disco.
+# En producción esto debería apuntar a almacenamiento externo (ej. Cloudinary/S3)
+# en vez del disco del servidor, para no perderlas si el VPS se reinstala.
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -149,3 +161,26 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+
+# --------------------------------------------------
+# SEGURIDAD EN PRODUCCIÓN (cuando DEBUG=False)
+# --------------------------------------------------
+# tienda.neuromisael.com ya corre con HTTPS, así que estas quedan activas
+# directamente (no hace falta esperar a instalar el certificado).
+
+if not DEBUG:
+    # ⚠️ SECURE_SSL_REDIRECT queda comentado a propósito: si el servidor está
+    # detrás de un proxy (Nginx) que no reenvía el header X-Forwarded-Proto,
+    # activar esto causa un bucle infinito de redirecciones y tumba el sitio.
+    # Descoméntalo solo si confirmas que Nginx reenvía ese header, o agrega
+    # también: SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True

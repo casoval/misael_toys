@@ -10,6 +10,8 @@ urlpatterns = [
     path('', include('catalogo.urls', namespace='catalogo')),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.BASE_DIR / 'static')
+# Las fotos de producto (media/) se sirven siempre desde Django, con DEBUG en
+# True o False — es una tienda pequeña, así que esto es suficiente por ahora.
+# El CSS/imágenes fijas de static/ las sirve whitenoise (ver MIDDLEWARE en
+# settings.py), en cualquier entorno, sin necesitar esto.
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
