@@ -38,7 +38,10 @@ class ImagenProductoInline(admin.TabularInline):
 
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "categoria", "precio", "precio_sugerido_col", "total_likes", "disponible", "destacado", "orden")
+    list_display = (
+        "miniatura", "nombre", "categoria", "precio", "precio_sugerido_col",
+        "peso_col", "horas_col", "total_likes", "disponible", "destacado", "orden",
+    )
     ordering = ("-total_likes",)
     list_editable = ("precio", "disponible", "destacado", "orden")
     list_filter = ("categoria", "disponible", "destacado")
@@ -68,10 +71,38 @@ class ProductoAdmin(admin.ModelAdmin):
         }),
     )
 
+    def get_queryset(self, request):
+        # Precarga las imágenes para que la miniatura no dispare una consulta
+        # extra por cada producto en la lista.
+        return super().get_queryset(request).prefetch_related("imagenes")
+
+    @admin.display(description="Foto")
+    def miniatura(self, obj):
+        primera = obj.imagenes.first()
+        if primera and primera.imagen:
+            return format_html(
+                '<img src="{}" style="width:40px;height:40px;border-radius:50%;'
+                'object-fit:cover;" />',
+                primera.imagen.url,
+            )
+        return mark_safe(
+            '<div style="width:40px;height:40px;border-radius:50%;background:#eee;'
+            'display:flex;align-items:center;justify-content:center;'
+            'color:#999;font-size:9px;text-align:center;">Sin foto</div>'
+        )
+
     @admin.display(description="Precio sugerido")
     def precio_sugerido_col(self, obj):
         _, sugerido = obj.calcular_costo_y_precio_sugerido()
         return f"Bs. {sugerido}" if sugerido is not None else "—"
+
+    @admin.display(description="Peso")
+    def peso_col(self, obj):
+        return f"{obj.peso_gramos} g" if obj.peso_gramos is not None else "—"
+
+    @admin.display(description="Horas impr.")
+    def horas_col(self, obj):
+        return f"{obj.horas_impresion} h" if obj.horas_impresion is not None else "—"
 
     @admin.display(description="Costo y precio sugerido (calculado)")
     def precio_sugerido_detalle(self, obj):
