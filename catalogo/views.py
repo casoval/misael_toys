@@ -102,6 +102,11 @@ def _contexto_filtros(request):
     }
 
 
+# Ya no es un límite de productos a mostrar: es el tamaño de cada "tanda" que
+# se trae por scroll infinito. El catálogo completo sigue siendo navegable,
+# simplemente se va cargando de a PRODUCTOS_POR_PAGINA en PRODUCTOS_POR_PAGINA
+# a medida que el usuario baja en la página (ver hx-trigger="revealed" en
+# _grid_productos.html).
 PRODUCTOS_POR_PAGINA = 12
 
 
