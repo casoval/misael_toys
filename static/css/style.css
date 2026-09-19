@@ -150,6 +150,123 @@ a:hover { color: var(--teal-dark); }
   .intro { font-size: 1.15rem; }
 }
 
+/* --- Banner de promoción: kit sensorial por cantidad --- */
+.promo-banner {
+  max-width: 1200px;
+  margin: 6px auto 18px;
+  padding: 0 20px;
+}
+
+.promo-banner-inner {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  background: linear-gradient(100deg, var(--teal-dark) 0%, var(--teal) 45%, var(--marigold-dark) 100%);
+  border-radius: 16px;
+  padding: 18px 24px;
+  box-shadow: 0 6px 18px rgba(31, 111, 107, 0.25);
+}
+
+.promo-banner-inner::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 5px;
+  background: linear-gradient(90deg, #005CB1, #01B5BD, #FCD62E, #F9242E, #4DC627);
+}
+
+.promo-icono {
+  font-size: 2.4rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.15));
+  animation: promo-tada 2.5s ease-in-out infinite;
+}
+
+@keyframes promo-tada {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  10% { transform: rotate(-8deg) scale(1.05); }
+  20% { transform: rotate(8deg) scale(1.05); }
+  30% { transform: rotate(-4deg) scale(1); }
+  40% { transform: rotate(0deg) scale(1); }
+}
+
+.promo-texto {
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.promo-titulo {
+  margin: 0;
+  font-family: 'Baloo 2', 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: #fff;
+}
+
+.promo-detalle {
+  margin: 4px 0 0;
+  font-size: 0.92rem;
+  color: rgba(255,255,255,0.9);
+}
+
+.promo-tiers {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.promo-tier {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.92);
+  color: var(--teal-dark);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.promo-tier strong {
+  font-family: 'Baloo 2', 'Inter', sans-serif;
+  font-size: 1rem;
+}
+
+.promo-descuento {
+  background: var(--marigold);
+  color: #fff;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.promo-tier-destacado {
+  background: #fff;
+  outline: 2px solid #FCD62E;
+  outline-offset: 2px;
+}
+
+.promo-tier-destacado .promo-descuento {
+  background: var(--marigold-dark);
+}
+
+@media (max-width: 700px) {
+  .promo-banner-inner {
+    flex-direction: column;
+    text-align: center;
+    padding: 20px 18px;
+  }
+  .promo-tiers {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
 /* --- Layout principal --- */
 .layout {
   max-width: 1200px;
