@@ -10,17 +10,30 @@
   --marigold-dark: #D98A28;
   --clay: #E4DFD3;
   --card-bg: #FFFFFF;
-  --radius: 10px;
+  --radius: 0.625rem;
+
+  /* Ancho de los contenedores principales. Se calcula un poco más ancho que
+     los "1200px"/"1000px" originales (dividido entre 0.9) porque el
+     font-size de la raíz se redujo al 90%: así, en pantalla, ocupan el mismo
+     lugar que antes, pero con más espacio interno disponible — por eso ahora
+     entran 4 productos por fila en vez de 3, sin dejar huecos a los costados. */
+  --ancho-contenido: 83.5rem;   /* ~1200px reales en pantalla */
+  --ancho-detalle: 69.5rem;     /* ~1000px reales en pantalla */
 }
 
 * { box-sizing: border-box; }
 
 html {
   /* Reduce toda la página (tipografía, imágenes, espaciados, bordes) al 90%
-     de su tamaño original de forma proporcional, igual que si el usuario
-     bajara el zoom del navegador al 90%. Soportado en Chrome, Edge, Safari
-     y Firefox 126+. */
-  zoom: 0.9;
+     de su tamaño original de forma proporcional. Como casi todas las medidas
+     de este archivo están en rem, basta con achicar el font-size de la raíz:
+     cada rem vale 10% menos y todo se reduce en conjunto. A diferencia de
+     `zoom`, esto no altera cómo el navegador calcula el ancho disponible
+     frente a los contenedores de ancho fijo, así que el layout no se
+     descuadra. Los bordes finos (1px) y los @media breakpoints se dejan tal
+     cual a propósito: los bordes para que no se vean borrosos, y los
+     breakpoints porque deben seguir respondiendo al ancho real de pantalla. */
+  font-size: 90%;
 }
 
 body {
@@ -28,7 +41,7 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: 'Inter', -apple-system, sans-serif;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
 }
 
@@ -52,12 +65,12 @@ a:hover { color: var(--teal-dark); }
 }
 
 .topbar-inner {
-  max-width: 1200px;
+  max-width: var(--ancho-contenido);
   margin: 0 auto;
-  padding: 14px 20px;
+  padding: 0.875rem 1.25rem;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 1.25rem;
   flex-wrap: wrap;
 }
 
@@ -66,11 +79,11 @@ a:hover { color: var(--teal-dark); }
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .logo-header {
-  height: 40px;
+  height: 2.5rem;
   width: auto;
   display: block;
 }
@@ -83,17 +96,17 @@ a:hover { color: var(--teal-dark); }
 }
 
 .hero-inicio {
-  max-width: 1200px;
+  max-width: var(--ancho-contenido);
   margin: 0 auto;
-  padding: 26px 20px 10px;
+  padding: 1.625rem 1.25rem 0.625rem;
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 1.75rem;
   text-align: left;
 }
 
 .logo-hero {
-  max-height: 150px;
+  max-height: 9.375rem;
   width: auto;
   flex-shrink: 0;
 }
@@ -102,12 +115,12 @@ a:hover { color: var(--teal-dark); }
   .hero-inicio {
     flex-direction: column;
     text-align: center;
-    gap: 12px;
+    gap: 0.75rem;
   }
 }
 
 @media (max-width: 600px) {
-  .logo-hero { max-height: 100px; }
+  .logo-hero { max-height: 6.25rem; }
 }
 
 .marca span {
@@ -116,12 +129,12 @@ a:hover { color: var(--teal-dark); }
 
 .buscador {
   flex: 1;
-  min-width: 200px;
+  min-width: 12.5rem;
 }
 
 .buscador input {
   width: 100%;
-  padding: 9px 14px;
+  padding: 0.5625rem 0.875rem;
   border: 1px solid var(--clay);
   border-radius: var(--radius);
   font-family: inherit;
@@ -160,9 +173,9 @@ a:hover { color: var(--teal-dark); }
 
 /* --- Banner de promoción: kit sensorial por cantidad --- */
 .promo-banner {
-  max-width: 1200px;
-  margin: 6px auto 18px;
-  padding: 0 20px;
+  max-width: var(--ancho-contenido);
+  margin: 0.375rem auto 1.125rem;
+  padding: 0 1.25rem;
 }
 
 .promo-banner-inner {
@@ -170,26 +183,26 @@ a:hover { color: var(--teal-dark); }
   overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 1.125rem;
   flex-wrap: wrap;
   background: linear-gradient(100deg, var(--teal-dark) 0%, var(--teal) 45%, var(--marigold-dark) 100%);
-  border-radius: 16px;
-  padding: 18px 24px;
-  box-shadow: 0 6px 18px rgba(31, 111, 107, 0.25);
+  border-radius: 1rem;
+  padding: 1.125rem 1.5rem;
+  box-shadow: 0 0.375rem 1.125rem rgba(31, 111, 107, 0.25);
 }
 
 .promo-banner-inner::before {
   content: "";
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 5px;
+  height: 0.3125rem;
   background: linear-gradient(90deg, #005CB1, #01B5BD, #FCD62E, #F9242E, #4DC627);
 }
 
 .promo-icono {
   font-size: 2.4rem;
   line-height: 1;
-  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.15));
+  filter: drop-shadow(0 0.125rem 0.1875rem rgba(0,0,0,0.15));
   animation: promo-tada 2.5s ease-in-out infinite;
 }
 
@@ -202,8 +215,8 @@ a:hover { color: var(--teal-dark); }
 }
 
 .promo-texto {
-  flex: 1 1 240px;
-  min-width: 200px;
+  flex: 1 1 15rem;
+  min-width: 12.5rem;
 }
 
 .promo-titulo {
@@ -215,7 +228,7 @@ a:hover { color: var(--teal-dark); }
 }
 
 .promo-detalle {
-  margin: 4px 0 0;
+  margin: 0.25rem 0 0;
   font-size: 0.92rem;
   color: rgba(255,255,255,0.9);
 }
@@ -223,21 +236,21 @@ a:hover { color: var(--teal-dark); }
 .promo-tiers {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  flex: 1 1 320px;
-  max-width: 420px;
+  gap: 0.625rem;
+  flex: 1 1 20rem;
+  max-width: 26.25rem;
 }
 
 .promo-tier {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
   flex-wrap: wrap;
   background: rgba(255,255,255,0.92);
   color: var(--teal-dark);
   font-size: 0.88rem;
   font-weight: 500;
-  padding: 10px 16px;
+  padding: 0.625rem 1rem;
   border-radius: 999px;
   white-space: normal;
   line-height: 1.3;
@@ -253,7 +266,7 @@ a:hover { color: var(--teal-dark); }
   background: var(--marigold);
   color: #fff;
   font-weight: 700;
-  padding: 3px 10px;
+  padding: 0.1875rem 0.625rem;
   border-radius: 999px;
   font-size: 0.82rem;
   white-space: nowrap;
@@ -273,7 +286,7 @@ a:hover { color: var(--teal-dark); }
   .promo-banner-inner {
     flex-direction: column;
     text-align: center;
-    padding: 20px 18px;
+    padding: 1.25rem 1.125rem;
   }
   .promo-tiers {
     justify-content: center;
@@ -283,12 +296,12 @@ a:hover { color: var(--teal-dark); }
 
 /* --- Layout principal --- */
 .layout {
-  max-width: 1200px;
+  max-width: var(--ancho-contenido);
   margin: 0 auto;
-  padding: 16px 20px 60px;
+  padding: 1rem 1.25rem 3.75rem;
   display: grid;
-  grid-template-columns: 230px 1fr;
-  gap: 28px;
+  grid-template-columns: 14.375rem 1fr;
+  gap: 1.75rem;
   align-items: start;
 }
 
@@ -299,11 +312,11 @@ a:hover { color: var(--teal-dark); }
 /* --- Filtros --- */
 .filtros {
   position: sticky;
-  top: 74px;
+  top: 4.625rem;
   border: 1px solid var(--clay);
   border-radius: var(--radius);
   background: var(--card-bg);
-  padding: 16px;
+  padding: 1rem;
 }
 
 @media (max-width: 820px) {
@@ -316,13 +329,13 @@ a:hover { color: var(--teal-dark); }
   font-size: 1.05rem;
   color: var(--teal-dark);
   cursor: pointer;
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
 }
 
-.filtros[open] .filtros-titulo-movil { margin-bottom: 14px; }
+.filtros[open] .filtros-titulo-movil { margin-bottom: 0.875rem; }
 
 .filtro-grupo {
-  margin-bottom: 18px;
+  margin-bottom: 1.125rem;
 }
 
 .filtro-grupo:last-child { margin-bottom: 0; }
@@ -333,14 +346,14 @@ a:hover { color: var(--teal-dark); }
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--ink-soft);
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
 }
 
 .filtro-opcion {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
   font-size: 0.92rem;
   cursor: pointer;
 }
@@ -348,13 +361,13 @@ a:hover { color: var(--teal-dark); }
 .filtro-opcion input { accent-color: var(--teal); }
 
 .filtro-color {
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .swatch {
   display: inline-block;
-  width: 18px;
-  height: 18px;
+  width: 1.125rem;
+  height: 1.125rem;
   border-radius: 50%;
   border: 1px solid rgba(0,0,0,0.15);
   flex-shrink: 0;
@@ -378,24 +391,24 @@ a:hover { color: var(--teal-dark); }
 
 .rango-precio {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
   align-items: center;
 }
 
 .rango-precio input {
   width: 100%;
-  padding: 7px 8px;
+  padding: 0.4375rem 0.5rem;
   border: 1px solid var(--clay);
-  border-radius: 6px;
+  border-radius: 0.375rem;
   font-family: inherit;
 }
 
 .btn-filtrar {
-  margin-top: 6px;
+  margin-top: 0.375rem;
   width: 100%;
-  padding: 8px;
+  padding: 0.5rem;
   border: none;
-  border-radius: 6px;
+  border-radius: 0.375rem;
   background: var(--teal);
   color: white;
   font-family: inherit;
@@ -406,7 +419,7 @@ a:hover { color: var(--teal-dark); }
 
 .limpiar-filtros {
   display: inline-block;
-  margin-top: 10px;
+  margin-top: 0.625rem;
   font-size: 0.85rem;
   color: var(--ink-soft);
   text-decoration: underline;
@@ -417,9 +430,9 @@ a:hover { color: var(--teal-dark); }
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 14px;
+  margin-bottom: 0.875rem;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .conteo-resultados {
@@ -429,8 +442,8 @@ a:hover { color: var(--teal-dark); }
 
 .grid-productos {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(13.75rem, 1fr));
+  gap: 1.125rem;
 }
 
 .tarjeta-producto {
@@ -466,10 +479,10 @@ a:hover { color: var(--teal-dark); }
 }
 
 .tarjeta-cuerpo {
-  padding: 12px 14px 14px;
+  padding: 0.75rem 0.875rem 0.875rem;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0.25rem;
   flex: 1;
 }
 
@@ -486,7 +499,7 @@ a:hover { color: var(--teal-dark); }
   font-weight: 600;
   font-size: 1.02rem;
   color: var(--ink);
-  margin: 2px 0;
+  margin: 0.125rem 0;
 }
 
 .tarjeta-desc {
@@ -499,7 +512,7 @@ a:hover { color: var(--teal-dark); }
   font-weight: 700;
   color: var(--marigold-dark);
   font-size: 1.05rem;
-  margin-top: 6px;
+  margin-top: 0.375rem;
 }
 
 .badge-destacado {
@@ -508,9 +521,9 @@ a:hover { color: var(--teal-dark); }
   color: white;
   font-size: 0.68rem;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 20px;
-  margin-bottom: 4px;
+  padding: 0.125rem 0.5rem;
+  border-radius: 1.25rem;
+  margin-bottom: 0.25rem;
   width: fit-content;
 }
 
@@ -526,36 +539,36 @@ a:hover { color: var(--teal-dark); }
 
 .scroll-cargando {
   text-align: center;
-  margin-top: 24px;
-  padding-top: 20px;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
   border-top: 1px solid var(--clay);
   color: var(--ink-soft);
   font-size: 0.9rem;
 }
 
 .sin-resultados {
-  padding: 40px 0;
+  padding: 2.5rem 0;
   color: var(--ink-soft);
   text-align: center;
 }
 
 /* --- Detalle de producto --- */
 .detalle {
-  max-width: 1000px;
+  max-width: var(--ancho-detalle);
   margin: 0 auto;
-  padding: 28px 20px 60px;
+  padding: 1.75rem 1.25rem 3.75rem;
 }
 
 .detalle-volver {
   font-size: 0.88rem;
-  margin-bottom: 16px;
+  margin-bottom: 1rem;
   display: inline-block;
 }
 
 .detalle-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px;
+  gap: 2rem;
 }
 
 @media (max-width: 720px) {
@@ -581,16 +594,16 @@ a:hover { color: var(--teal-dark); }
 
 .galeria-miniaturas {
   display: flex;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
   flex-wrap: wrap;
 }
 
 .galeria-miniaturas img {
-  width: 60px;
-  height: 60px;
+  width: 3.75rem;
+  height: 3.75rem;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 0.375rem;
   border: 1px solid var(--clay);
   cursor: pointer;
 }
@@ -599,23 +612,23 @@ a:hover { color: var(--teal-dark); }
   font-size: 1.6rem;
   font-weight: 700;
   color: var(--marigold-dark);
-  margin: 10px 0;
+  margin: 0.625rem 0;
 }
 
 .detalle-precio-fila {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 1rem;
   flex-wrap: wrap;
 }
 
 .btn-me-gusta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
+  gap: 0.5rem;
+  padding: 0.5625rem 1rem;
   border: 1px solid var(--clay);
-  border-radius: 20px;
+  border-radius: 1.25rem;
   background: var(--card-bg);
   color: var(--ink);
   font-family: inherit;
@@ -642,16 +655,16 @@ a:hover { color: var(--teal-dark); }
 .detalle-atributos {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 14px 0;
+  gap: 0.5rem;
+  margin: 0.875rem 0;
 }
 
 .chip-atributo {
   font-size: 0.8rem;
   background: var(--bg);
   border: 1px solid var(--clay);
-  padding: 4px 10px;
-  border-radius: 20px;
+  padding: 0.25rem 0.625rem;
+  border-radius: 1.25rem;
   color: var(--ink-soft);
 }
 
@@ -660,46 +673,46 @@ a:hover { color: var(--teal-dark); }
 .chip-color {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
 }
 
 .swatch-chip {
-  width: 14px;
-  height: 14px;
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .btn-whatsapp {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   background: var(--teal);
   color: white;
-  padding: 12px 20px;
+  padding: 0.75rem 1.25rem;
   border-radius: var(--radius);
   font-weight: 600;
-  margin-top: 10px;
+  margin-top: 0.625rem;
 }
 .btn-whatsapp:hover { background: var(--teal-dark); color: white; }
 
 .detalle-descripcion {
-  margin-top: 18px;
+  margin-top: 1.125rem;
   color: var(--ink);
   line-height: 1.6;
 }
 
 .relacionados {
-  margin-top: 50px;
+  margin-top: 3.125rem;
 }
 
 .relacionados h2 {
   font-size: 1.2rem;
-  margin-bottom: 14px;
+  margin-bottom: 0.875rem;
 }
 
 /* --- Footer --- */
 .footer {
   border-top: 1px solid var(--clay);
-  padding: 24px 20px;
+  padding: 1.5rem 1.25rem;
   text-align: center;
   color: var(--ink-soft);
   font-size: 0.85rem;

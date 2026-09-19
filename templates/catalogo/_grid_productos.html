@@ -16,7 +16,7 @@
      {% endif %}>
     <div class="tarjeta-imagen">
       {% if producto.imagen_principal %}
-        <img src="{{ producto.imagen_principal }}" alt="{{ producto.nombre }}" loading="lazy">
+        <img src="{{ producto.imagen_principal_miniatura }}" alt="{{ producto.nombre }}" loading="lazy">
       {% else %}
         <span class="sin-imagen">Sin foto aún</span>
       {% endif %}

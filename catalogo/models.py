@@ -3,6 +3,18 @@ from django.utils.text import slugify
 from django.urls import reverse
 
 
+def _url_cloudinary_transformada(url, transformacion):
+    """Si la URL es de Cloudinary, le inserta una transformación (redimensionar
+    + calidad/formato automáticos) para no bajar la foto a resolución completa
+    donde no hace falta (ej. una miniatura de 220px no necesita una foto de
+    4000px de ancho). Si no es Cloudinary (ej. desarrollo local sin
+    credenciales configuradas), devuelve la URL tal cual: sin ese servicio no
+    hay forma de redimensionar sobre la marcha."""
+    if not url or "res.cloudinary.com" not in url or "/upload/" not in url:
+        return url
+    return url.replace("/upload/", f"/upload/{transformacion}/", 1)
+
+
 class Categoria(models.Model):
     """Categorías de productos (ej. Sensorial táctil, Motricidad fina...).
     El administrador crea las que necesite desde el admin."""
@@ -165,6 +177,14 @@ class Producto(models.Model):
         primera = self.imagenes.first()
         return primera.imagen.url if primera else None
 
+    @property
+    def imagen_principal_miniatura(self):
+        """Versión chica y optimizada de la primera foto, para las tarjetas
+        del catálogo (ver ImagenProducto.miniatura). Ahí es donde más pesa
+        la velocidad, porque se cargan varias tarjetas a la vez."""
+        primera = self.imagenes.first()
+        return primera.miniatura if primera else None
+
     def calcular_costo_y_precio_sugerido(self):
         """Calcula el costo estimado y un precio de venta sugerido, a partir de:
         - costo del material (peso x precio del filamento)
@@ -229,6 +249,25 @@ class ImagenProducto(models.Model):
 
     def __str__(self):
         return f"Imagen de {self.producto.nombre} ({self.orden})"
+
+    @property
+    def miniatura(self):
+        """Para las tarjetas del catálogo (se ven a ~220-280px; se pide al
+        doble para que se vea nítida en pantallas retina)."""
+        return _url_cloudinary_transformada(self.imagen.url, "w_500,h_500,c_fill,q_auto,f_auto")
+
+    @property
+    def miniatura_chica(self):
+        """Para las miniaturas de la galería en la ficha de producto (se ven
+        a 60px)."""
+        return _url_cloudinary_transformada(self.imagen.url, "w_150,h_150,c_fill,q_auto,f_auto")
+
+    @property
+    def grande(self):
+        """Para la foto principal de la ficha de producto: limita el ancho
+        máximo (evita bajar fotos de varios MB cuando en pantalla se ven a
+        unos 500-600px) sin recortar el encuadre."""
+        return _url_cloudinary_transformada(self.imagen.url, "w_900,q_auto,f_auto")
 
 
 class ConfiguracionSitio(models.Model):

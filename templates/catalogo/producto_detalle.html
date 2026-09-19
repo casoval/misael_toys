@@ -22,7 +22,7 @@
       {% with primera=producto.imagenes.first %}
       <div class="detalle-imagen-principal" id="imagen-principal">
         {% if primera %}
-          <img src="{{ primera.imagen.url }}" alt="{{ producto.nombre }}" id="img-grande">
+          <img src="{{ primera.grande }}" alt="{{ producto.nombre }}" id="img-grande">
         {% else %}
           <span class="sin-imagen">Sin foto aún</span>
         {% endif %}
@@ -32,8 +32,8 @@
       {% if producto.imagenes.count > 1 %}
       <div class="galeria-miniaturas">
         {% for img in producto.imagenes.all %}
-        <img src="{{ img.imagen.url }}" alt="{{ producto.nombre }}"
-             onclick="document.getElementById('img-grande').src=this.src">
+        <img src="{{ img.miniatura_chica }}" alt="{{ producto.nombre }}"
+             onclick="document.getElementById('img-grande').src='{{ img.grande }}'">
         {% endfor %}
       </div>
       {% endif %}
@@ -92,7 +92,7 @@
       <a href="{{ r.get_absolute_url }}" class="tarjeta-producto">
         <div class="tarjeta-imagen">
           {% if r.imagen_principal %}
-            <img src="{{ r.imagen_principal }}" alt="{{ r.nombre }}">
+            <img src="{{ r.imagen_principal_miniatura }}" alt="{{ r.nombre }}" loading="lazy">
           {% else %}
             <span class="sin-imagen">Sin foto aún</span>
           {% endif %}
