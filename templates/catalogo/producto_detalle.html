@@ -40,7 +40,13 @@
     </div>
 
     <div>
-      {% if producto.categoria %}<span class="tarjeta-categoria">{{ producto.categoria.nombre }}</span>{% endif %}
+      {% if producto.destacado or producto.recomendado_por_terapeutas %}
+      <div class="tarjeta-badges">
+        {% if producto.recomendado_por_terapeutas %}<span class="badge-recomendado">🩺 Recomendado por terapeutas</span>{% endif %}
+        {% if producto.destacado %}<span class="badge-destacado">Destacado</span>{% endif %}
+      </div>
+      {% endif %}
+      {% if producto.categoria %}<span class="tarjeta-categoria" style="background:{{ producto.categoria.color_fondo }};">{{ producto.categoria.nombre }}</span>{% endif %}
       <h1>{{ producto.nombre }}</h1>
       <div class="detalle-precio-fila">
         <div class="detalle-precio">Bs. {{ producto.precio|floatformat:'-2' }}</div>

@@ -7,7 +7,10 @@
 
 <div class="hero-inicio">
   <img src="{% static 'img/logo.png' %}" alt="Misael Toys" class="logo-hero">
-  <p class="intro">{{ config.texto_bienvenida }}</p>
+  <div class="hero-texto">
+    <p class="intro">{{ config.texto_bienvenida }}</p>
+    <span class="sello-terapeutas">🩺 Creado junto a nuestro equipo de terapeutas ocupacionales</span>
+  </div>
 </div>
 
 <div class="promo-banner">
@@ -49,6 +52,7 @@
         {% for cat in categorias %}
         <label class="filtro-opcion">
           <input type="radio" name="categoria" value="{{ cat.slug }}" {% if categoria_actual == cat.slug %}checked{% endif %}>
+          <span class="categoria-punto" style="background:{{ cat.color_fondo }};" aria-hidden="true"></span>
           {{ cat.nombre }}
         </label>
         {% endfor %}

@@ -6,10 +6,17 @@ from .models import Categoria, Atributo, ValorAtributo, Producto, ImagenProducto
 
 @admin.register(Categoria)
 class CategoriaAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "orden", "activa")
+    list_display = ("color_preview", "nombre", "orden", "activa")
     list_editable = ("orden", "activa")
     prepopulated_fields = {"slug": ("nombre",)}
     search_fields = ("nombre",)
+
+    @admin.display(description="Color")
+    def color_preview(self, obj):
+        return format_html(
+            '<div style="width:22px;height:22px;border-radius:50%;background:{};"></div>',
+            obj.color_fondo,
+        )
 
 
 class ValorAtributoInline(admin.TabularInline):
@@ -40,11 +47,12 @@ class ImagenProductoInline(admin.TabularInline):
 class ProductoAdmin(admin.ModelAdmin):
     list_display = (
         "miniatura", "nombre", "categoria", "precio", "precio_sugerido_col",
-        "peso_col", "horas_col", "total_likes", "disponible", "destacado", "orden",
+        "peso_col", "horas_col", "total_likes", "disponible", "destacado",
+        "recomendado_por_terapeutas", "orden",
     )
     ordering = ("-total_likes",)
-    list_editable = ("precio", "disponible", "destacado", "orden")
-    list_filter = ("categoria", "disponible", "destacado")
+    list_editable = ("precio", "disponible", "destacado", "recomendado_por_terapeutas", "orden")
+    list_filter = ("categoria", "disponible", "destacado", "recomendado_por_terapeutas")
     search_fields = ("nombre", "descripcion")
     prepopulated_fields = {"slug": ("nombre",)}
     filter_horizontal = ("atributos",)
@@ -67,7 +75,7 @@ class ProductoAdmin(admin.ModelAdmin):
                             "El precio real que ve el cliente sigue siendo el campo 'precio' de arriba.",
         }),
         ("Visibilidad", {
-            "fields": ("disponible", "destacado", "orden")
+            "fields": ("disponible", "destacado", "recomendado_por_terapeutas", "orden")
         }),
     )
 

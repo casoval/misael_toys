@@ -19,6 +19,22 @@ class Categoria(models.Model):
     """Categorías de productos (ej. Sensorial táctil, Motricidad fina...).
     El administrador crea las que necesite desde el admin."""
 
+    # Paleta de colores vibrantes que se reparte automáticamente entre las
+    # categorías (por su id), para que cada una tenga un color propio en todo
+    # el sitio (tarjetas, filtros) sin que el administrador tenga que elegir
+    # un color a mano cada vez que crea una categoría nueva. El teal y el
+    # marigold quedan fuera a propósito: esos dos colores ya tienen un
+    # significado fijo en el sitio (teal = respaldo terapéutico, marigold =
+    # destacado), así que no se reutilizan aquí para no generar confusión.
+    _PALETA_COLORES = [
+        "#FF6F59",  # coral
+        "#2F9BE0",  # celeste
+        "#8B5CF6",  # violeta
+        "#F0609B",  # rosa
+        "#5FBF57",  # verde lima
+        "#1FB6C9",  # cian
+    ]
+
     nombre = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
     descripcion = models.TextField(blank=True)
@@ -37,6 +53,16 @@ class Categoria(models.Model):
         if not self.slug:
             self.slug = slugify(self.nombre)
         super().save(*args, **kwargs)
+
+    @property
+    def color_fondo(self):
+        """Color de acento de esta categoría (para el badge en las tarjetas
+        y el puntito en los filtros). Se calcula solo, sin guardar nada en
+        la base de datos: dos categorías con id consecutivo casi siempre
+        caen en colores distintos de la paleta."""
+        if not self.pk:
+            return self._PALETA_COLORES[0]
+        return self._PALETA_COLORES[self.pk % len(self._PALETA_COLORES)]
 
 
 class Atributo(models.Model):
@@ -128,6 +154,13 @@ class Producto(models.Model):
 
     disponible = models.BooleanField(default=True, help_text="Se muestra en el catálogo público")
     destacado = models.BooleanField(default=False, help_text="Se resalta primero en el catálogo")
+    recomendado_por_terapeutas = models.BooleanField(
+        default=False,
+        verbose_name="Recomendado por terapeutas",
+        help_text="Muestra el sello 'Recomendado por terapeutas' en la tarjeta y en la ficha del "
+                   "producto. Actívalo solo en productos que tu equipo de terapeutas realmente evaluó: "
+                   "el sello pierde valor si aparece en todo.",
+    )
     orden = models.PositiveIntegerField(default=0)
 
     # --- Datos para calcular un precio sugerido (uso interno, no se muestran al público) ---
