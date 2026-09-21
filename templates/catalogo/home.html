@@ -22,10 +22,14 @@
     </div>
     <div class="promo-tiers">
       <span class="promo-tier">
-        Compra <strong>5 o más productos</strong> y obtén <span class="promo-descuento">5% de descuento</span>
+        <span class="promo-tier-larga">Compra <strong>5 o más productos</strong> y obtén</span>
+        <span class="promo-tier-corta"><strong>5+ productos</strong></span>
+        <span class="promo-descuento">5% de descuento</span>
       </span>
       <span class="promo-tier promo-tier-destacado">
-        Compra <strong>10 o más productos</strong> y obtén <span class="promo-descuento">10% de descuento</span>
+        <span class="promo-tier-larga">Compra <strong>10 o más productos</strong> y obtén</span>
+        <span class="promo-tier-corta"><strong>10+ productos</strong></span>
+        <span class="promo-descuento">10% de descuento</span>
       </span>
     </div>
   </div>
@@ -103,4 +107,25 @@
   </section>
 
 </div>
+
+<script>
+  (function () {
+    var filtros = document.querySelector('.filtros');
+    if (!filtros) return;
+    var mq = window.matchMedia('(min-width: 821px)');
+    function ajustarSegunPantalla(e) {
+      if (e.matches) {
+        filtros.setAttribute('open', '');
+      } else {
+        filtros.removeAttribute('open');
+      }
+    }
+    ajustarSegunPantalla(mq);
+    if (mq.addEventListener) {
+      mq.addEventListener('change', ajustarSegunPantalla);
+    } else {
+      mq.addListener(ajustarSegunPantalla);
+    }
+  })();
+</script>
 {% endblock %}
