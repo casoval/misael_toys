@@ -61,7 +61,7 @@ a:hover { color: var(--teal-dark); }
   background: var(--card-bg);
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 70;
 }
 
 .topbar-inner {
@@ -185,6 +185,46 @@ a:hover { color: var(--teal-dark); }
   white-space: nowrap;
 }
 
+/* --- Botón de filtros del header (solo aparece en celular, ver media query) --- */
+.btn-filtros-movil {
+  display: none;
+  align-items: center;
+  gap: 0.375rem;
+  background: var(--teal);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 0.4375rem 0.875rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-filtros-movil:hover,
+.btn-filtros-movil:active {
+  background: var(--teal-dark);
+}
+
+.btn-filtros-contador {
+  background: rgba(255,255,255,0.25);
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-filtros-contador:empty { display: none; }
+
+@media (max-width: 820px) {
+  .btn-filtros-movil { display: inline-flex; }
+}
+
 /* --- Intro: junto al logo, letra grande y colorida --- */
 .intro {
   margin: 0;
@@ -294,8 +334,6 @@ a:hover { color: var(--teal-dark); }
   font-size: 0.95rem;
 }
 
-.promo-tier-corta { display: none; }
-
 .promo-descuento {
   background: var(--marigold);
   color: #fff;
@@ -345,8 +383,6 @@ a:hover { color: var(--teal-dark); }
     padding: 0.5rem 0.875rem;
     font-size: 0.82rem;
   }
-  .promo-tier-larga { display: none; }
-  .promo-tier-corta { display: inline; }
 }
 
 /* --- Layout principal --- */
@@ -385,6 +421,70 @@ a:hover { color: var(--teal-dark); }
 
 @media (max-width: 820px) {
   .filtros { position: relative; }
+
+  /* Cerrado: no ocupa lugar arriba de la grilla — el botón del header es
+     ahora el único disparador visible en celular. */
+  .filtros:not([open]) { display: none; }
+
+  /* Abierto: panel que sube desde abajo, por encima de todo lo demás. */
+  .filtros[open] {
+    position: fixed;
+    inset: auto 0 0 0;
+    top: auto;
+    z-index: 60;
+    max-height: 82vh;
+    overflow-y: auto;
+    border: none;
+    border-radius: 1.125rem 1.125rem 0 0;
+    box-shadow: 0 -0.5rem 1.75rem rgba(46, 42, 37, 0.22);
+    animation: panel-filtros-sube 0.25s ease;
+  }
+
+  .filtros::before { display: none; }
+
+  .filtros-titulo-movil {
+    position: sticky;
+    top: 0;
+    background: var(--card-bg);
+    padding-top: 0.375rem;
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+
+  .filtros-titulo-movil::before {
+    content: "";
+    flex-basis: 100%;
+    width: 2.25rem;
+    height: 0.25rem;
+    background: var(--clay);
+    border-radius: 999px;
+    margin: 0 auto;
+  }
+}
+
+@keyframes panel-filtros-sube {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.filtros-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 15, 0.45);
+  z-index: 55;
+}
+
+.filtros[open] ~ .filtros-backdrop {
+  display: block;
+}
+
+@media (min-width: 821px) {
+  .filtros-backdrop { display: none !important; }
+}
+
+body.sin-scroll {
+  overflow: hidden;
 }
 
 .filtros-titulo-movil {

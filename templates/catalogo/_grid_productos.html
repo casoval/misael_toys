@@ -1,4 +1,5 @@
 {% load static %}
+<span id="btn-filtros-contador" class="btn-filtros-contador" hx-swap-oob="true">{% if filtros_activos_count %}{{ filtros_activos_count }}{% endif %}</span>
 <div class="grid-resultado-header">
   <span class="conteo-resultados">{{ total_resultados }} producto{{ total_resultados|pluralize }}</span>
 </div>

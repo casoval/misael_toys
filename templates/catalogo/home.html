@@ -3,6 +3,18 @@
 
 {% block titulo %}{{ config.nombre_tienda|default:"Misael Toys" }}{% endblock %}
 
+{% block boton_filtros %}
+<button type="button" class="btn-filtros-movil" id="btn-filtros-movil" aria-label="Abrir filtros" aria-controls="panel-filtros" aria-expanded="false">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <line x1="4" y1="6" x2="20" y2="6"></line>
+    <line x1="8" y1="12" x2="16" y2="12"></line>
+    <line x1="11" y1="18" x2="13" y2="18"></line>
+  </svg>
+  Filtros
+  <span class="btn-filtros-contador" id="btn-filtros-contador">{% if filtros_activos_count %}{{ filtros_activos_count }}{% endif %}</span>
+</button>
+{% endblock %}
+
 {% block contenido %}
 
 <div class="hero-inicio">
@@ -22,14 +34,10 @@
     </div>
     <div class="promo-tiers">
       <span class="promo-tier">
-        <span class="promo-tier-larga">Compra <strong>5 o más productos</strong> y obtén</span>
-        <span class="promo-tier-corta"><strong>5+ productos</strong></span>
-        <span class="promo-descuento">5% de descuento</span>
+        Compra <strong>5 o más productos</strong> y obtén <span class="promo-descuento">5% de descuento</span>
       </span>
       <span class="promo-tier promo-tier-destacado">
-        <span class="promo-tier-larga">Compra <strong>10 o más productos</strong> y obtén</span>
-        <span class="promo-tier-corta"><strong>10+ productos</strong></span>
-        <span class="promo-descuento">10% de descuento</span>
+        Compra <strong>10 o más productos</strong> y obtén <span class="promo-descuento">10% de descuento</span>
       </span>
     </div>
   </div>
@@ -39,7 +47,7 @@
 
   <!-- Filtros: todo lo que ve aquí lo controla el admin (categorías y atributos que cree) -->
   <!-- <details> para que en celular se pueda cerrar y ver los productos sin scroll infinito -->
-  <details class="filtros" open>
+  <details class="filtros" id="panel-filtros" open>
     <summary class="filtros-titulo-movil">Filtros</summary>
     <form id="form-filtros" method="get" action="{% url 'catalogo:home' %}"
           hx-get="{% url 'catalogo:home' %}" hx-target="#resultado-productos"
@@ -101,6 +109,8 @@
     </form>
   </details>
 
+  <div class="filtros-backdrop" id="filtros-backdrop"></div>
+
   <!-- Resultados: esta parte se reemplaza sola al cambiar un filtro (sin recargar la página) -->
   <section id="resultado-productos">
     {% include "catalogo/_grid_productos.html" %}
@@ -111,8 +121,13 @@
 <script>
   (function () {
     var filtros = document.querySelector('.filtros');
+    var boton = document.getElementById('btn-filtros-movil');
+    var fondo = document.getElementById('filtros-backdrop');
     if (!filtros) return;
+
     var mq = window.matchMedia('(min-width: 821px)');
+    function esEscritorio() { return mq.matches; }
+
     function ajustarSegunPantalla(e) {
       if (e.matches) {
         filtros.setAttribute('open', '');
@@ -126,6 +141,33 @@
     } else {
       mq.addListener(ajustarSegunPantalla);
     }
+
+    // El botón del header (solo visible en celular) prende/apaga el mismo
+    // <details> que ya controla los filtros.
+    if (boton) {
+      boton.addEventListener('click', function () {
+        if (filtros.open) {
+          filtros.removeAttribute('open');
+        } else {
+          filtros.setAttribute('open', '');
+        }
+      });
+    }
+
+    // Tocar el fondo oscuro cierra el panel.
+    if (fondo) {
+      fondo.addEventListener('click', function () {
+        filtros.removeAttribute('open');
+      });
+    }
+
+    // Mientras el panel está abierto en celular, bloqueamos el scroll de
+    // fondo (si no, se siente raro poder scrollear los productos detrás).
+    filtros.addEventListener('toggle', function () {
+      var esPanelFlotante = !esEscritorio();
+      document.body.classList.toggle('sin-scroll', esPanelFlotante && filtros.open);
+      if (boton) boton.setAttribute('aria-expanded', filtros.open ? 'true' : 'false');
+    });
   })();
 </script>
 {% endblock %}

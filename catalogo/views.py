@@ -91,14 +91,23 @@ def _contexto_filtros(request):
         .order_by("orden", "nombre")
     )
     valores_seleccionados = set(request.GET.getlist("valor"))
+    categoria_actual = request.GET.get("categoria", "")
+    precio_min_actual = request.GET.get("precio_min", "")
+    precio_max_actual = request.GET.get("precio_max", "")
+    filtros_activos_count = (
+        (1 if categoria_actual else 0)
+        + (1 if (precio_min_actual or precio_max_actual) else 0)
+        + len(valores_seleccionados)
+    )
     return {
         "categorias": categorias,
         "atributos": atributos,
         "valores_seleccionados": valores_seleccionados,
-        "categoria_actual": request.GET.get("categoria", ""),
+        "categoria_actual": categoria_actual,
         "q_actual": request.GET.get("q", ""),
-        "precio_min_actual": request.GET.get("precio_min", ""),
-        "precio_max_actual": request.GET.get("precio_max", ""),
+        "precio_min_actual": precio_min_actual,
+        "precio_max_actual": precio_max_actual,
+        "filtros_activos_count": filtros_activos_count,
     }
 
 
