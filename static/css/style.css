@@ -958,27 +958,37 @@ body.sin-scroll {
 .marca-letra {
   display: inline-block;
   opacity: 0;
-  transform: translateY(0.5rem) scale(0.7);
-  animation: marca-letra-aparece 0.45s ease forwards;
-  animation-delay: calc(var(--i) * 0.09s);
+  animation: marca-letra-ciclo 3.4s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.2s);
 }
 
 .marca-espacio {
   width: 0.3em;
 }
 
-@keyframes marca-letra-aparece {
-  from { opacity: 0; transform: translateY(0.5rem) scale(0.7); }
-  60% { opacity: 1; transform: translateY(-0.1rem) scale(1.08); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+/* Ciclo lento e infinito: cada letra aparece, se queda visible un rato,
+   se desvanece y vuelve a empezar. El animation-delay escalonado por
+   letra (--i) hace que el efecto viaje por toda la palabra en cascada,
+   en vez de que todas aparezcan/desaparezcan al mismo tiempo. */
+@keyframes marca-letra-ciclo {
+  0%   { opacity: 0; transform: translateY(0.35rem) scale(0.85); }
+  15%  { opacity: 1; transform: translateY(0) scale(1); }
+  70%  { opacity: 1; transform: translateY(0) scale(1); }
+  85%  { opacity: 0; transform: translateY(-0.35rem) scale(0.85); }
+  100% { opacity: 0; transform: translateY(-0.35rem) scale(0.85); }
 }
 
 /* Los 3 puntitos aparecen justo después de la última letra y luego
    quedan "saltando" en bucle, como un indicador de escritura. */
 .marca-puntos {
   opacity: 0;
-  animation: marca-letra-aparece 0.3s ease forwards;
+  animation: marca-puntos-aparece 0.3s ease forwards;
   animation-delay: 1.05s;
+}
+
+@keyframes marca-puntos-aparece {
+  from { opacity: 0; transform: translateY(0.35rem); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .marca-puntos span {
@@ -1035,6 +1045,46 @@ body.sin-scroll {
     bottom: 1rem;
     width: 3.25rem;
     height: 3.25rem;
+  }
+}
+
+/* --- Barra superior en pantallas muy pequeñas: se apila en columna
+   en vez de amontonarse en una sola fila --- */
+.marca-texto {
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .topbar-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+  }
+
+  .marca {
+    justify-content: center;
+    font-size: 1.15rem;
+  }
+
+  .marca-texto {
+    font-size: 1.15rem;
+  }
+
+  .buscador {
+    order: 2;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .contacto-header {
+    order: 3;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .btn-filtros-movil {
+    order: 4;
+    align-self: center;
   }
 }
 
