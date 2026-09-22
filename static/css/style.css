@@ -1131,14 +1131,23 @@ body.sin-scroll {
 }
 
 @media (max-width: 480px) {
+  /* 2 filas en vez de 4: fila 1 = logo "MISAEL TOYS" + contacto,
+     fila 2 = buscador + botón de filtros. Con grid es fácil emparejar
+     cada elemento a su celda sin depender del orden en el HTML. */
   .topbar-inner {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.625rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "marca    contacto"
+      "buscador filtros";
+    align-items: center;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
   }
 
   .marca {
-    justify-content: center;
+    grid-area: marca;
+    justify-content: flex-start;
     font-size: 1.15rem;
   }
 
@@ -1146,21 +1155,21 @@ body.sin-scroll {
     font-size: 1.15rem;
   }
 
+  .contacto-header {
+    grid-area: contacto;
+    text-align: right;
+    white-space: normal;
+  }
+
   .buscador {
-    order: 2;
+    grid-area: buscador;
     min-width: 0;
     width: 100%;
   }
 
-  .contacto-header {
-    order: 3;
-    text-align: center;
-    white-space: normal;
-  }
-
   .btn-filtros-movil {
-    order: 4;
-    align-self: center;
+    grid-area: filtros;
+    justify-self: end;
   }
 }
 
