@@ -228,15 +228,15 @@ a:hover { color: var(--teal-dark); }
 /* --- Intro: junto al logo, letra grande y colorida --- */
 .intro {
   margin: 0;
-  color: var(--teal-dark);
+  /* Antes tenía un degradado de varios colores con "background-clip: text"
+     que en varias pantallas se veía poco legible. Se deja un solo color
+     oscuro y sólido (--ink, el mismo tono oscuro usado para el texto
+     normal del sitio) para que se lea perfectamente en cualquier fondo. */
+  color: var(--ink);
   font-family: 'Baloo 2', 'Inter', sans-serif;
   font-weight: 700;
   font-size: 1.4rem;
   line-height: 1.4;
-  background: linear-gradient(90deg, var(--teal-dark) 0%, var(--teal) 35%, var(--marigold-dark) 70%, var(--marigold) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 @media (max-width: 700px) {
@@ -260,6 +260,7 @@ a:hover { color: var(--teal-dark); }
   background: linear-gradient(100deg, var(--teal-dark) 0%, var(--teal) 45%, var(--marigold-dark) 100%);
   border-radius: 1rem;
   padding: 1.125rem 1.5rem;
+  padding-top: 2.5rem;
   box-shadow: 0 0.375rem 1.125rem rgba(31, 111, 107, 0.25);
 }
 
@@ -269,6 +270,56 @@ a:hover { color: var(--teal-dark); }
   top: 0; left: 0; right: 0;
   height: 0.3125rem;
   background: linear-gradient(90deg, #005CB1, #01B5BD, #FCD62E, #F9242E, #4DC627);
+}
+
+/* Brillo diagonal que recorre el banner de vez en cuando, como un
+   destello de "oferta especial" pasando por encima del fondo. */
+.promo-banner-inner::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(120deg, transparent, rgba(255,255,255,0.4), transparent);
+  transform: skewX(-20deg);
+  animation: promo-brillo 3.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes promo-brillo {
+  0%   { left: -60%; }
+  45%  { left: 130%; }
+  100% { left: 130%; }
+}
+
+/* Etiqueta "¡Oferta imperdible!" que salta a la vista con un pulso
+   suave, para reforzar la idea de gran promoción / no te lo pierdas. */
+.promo-badge {
+  position: absolute;
+  top: 0.75rem;
+  left: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: linear-gradient(90deg, #F9242E, #FF6F59);
+  color: #fff;
+  font-family: 'Baloo 2', 'Inter', sans-serif;
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  box-shadow: 0 0.25rem 0.75rem rgba(249, 36, 46, 0.45);
+  animation: promo-badge-pulso 1.7s ease-in-out infinite;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+@keyframes promo-badge-pulso {
+  0%, 100% { transform: scale(1); box-shadow: 0 0.25rem 0.75rem rgba(249, 36, 46, 0.45); }
+  50%      { transform: scale(1.08); box-shadow: 0 0.3rem 1.1rem rgba(249, 36, 46, 0.7); }
 }
 
 .promo-icono {
@@ -359,7 +410,18 @@ a:hover { color: var(--teal-dark); }
     flex-direction: column;
     text-align: center;
     padding: 1rem;
+    padding-top: 2.75rem;
     gap: 0.75rem;
+  }
+  .promo-badge {
+    left: 50%;
+    transform: translateX(-50%);
+    top: 0.65rem;
+    font-size: 0.7rem;
+  }
+  @keyframes promo-badge-pulso {
+    0%, 100% { transform: translateX(-50%) scale(1); box-shadow: 0 0.25rem 0.75rem rgba(249, 36, 46, 0.45); }
+    50%      { transform: translateX(-50%) scale(1.08); box-shadow: 0 0.3rem 1.1rem rgba(249, 36, 46, 0.7); }
   }
   .promo-icono {
     font-size: 1.8rem;
@@ -954,41 +1016,55 @@ body.sin-scroll {
   background: linear-gradient(90deg, #005CB1, #01B5BD, #FCD62E, #F9242E, #4DC627);
 }
 
-/* --- Animación letra por letra del logo "MISAEL TOYS" --- */
+/* --- Animación letra por letra del logo "MISAEL TOYS" ---
+   Ciclo total de 20s (antes 3.4s): la palabra se escribe MUCHO más
+   despacio, letra por letra (0.4s de diferencia entre cada una, antes
+   0.2s), se queda completa y quieta sobre la pantalla ~5s para que se
+   alcance a leer bien, y recién ahí empieza a desvanecerse (también en
+   cascada) antes de reiniciar el ciclo. */
 .marca-letra {
   display: inline-block;
   opacity: 0;
-  animation: marca-letra-ciclo 3.4s ease-in-out infinite;
-  animation-delay: calc(var(--i) * 0.2s);
+  animation: marca-letra-ciclo 20s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.4s);
 }
 
 .marca-espacio {
   width: 0.3em;
 }
 
-/* Ciclo lento e infinito: cada letra aparece, se queda visible un rato,
-   se desvanece y vuelve a empezar. El animation-delay escalonado por
-   letra (--i) hace que el efecto viaje por toda la palabra en cascada,
-   en vez de que todas aparezcan/desaparezcan al mismo tiempo. */
+/* Con --i de 0 a 10 (11 "letras" contando el espacio) y 0.4s de
+   diferencia entre cada una, la última letra empieza a aparecer a los
+   4s. Cada letra llega a opacidad 1 al 10% de sus 20s (=2s de fundido
+   dentro de su propio reloj), así que la palabra queda completa a los
+   4s + 2s = 6s. Todas las letras se mantienen visibles hasta el 55%
+   (=11s), momento en el que la primera letra empieza a desvanecerse:
+   eso deja la frase "MISAEL TOYS" completa e inmóvil en pantalla
+   durante 11s - 6s = 5s exactos antes de que arranque el desvanecido.
+   Entre el 65% y el 100% la letra queda invisible (pausa final antes
+   de que el ciclo de 20s vuelva a empezar desde 0%). */
 @keyframes marca-letra-ciclo {
   0%   { opacity: 0; transform: translateY(0.35rem) scale(0.85); }
-  15%  { opacity: 1; transform: translateY(0) scale(1); }
-  70%  { opacity: 1; transform: translateY(0) scale(1); }
-  85%  { opacity: 0; transform: translateY(-0.35rem) scale(0.85); }
+  10%  { opacity: 1; transform: translateY(0) scale(1); }
+  55%  { opacity: 1; transform: translateY(0) scale(1); }
+  65%  { opacity: 0; transform: translateY(-0.35rem) scale(0.85); }
   100% { opacity: 0; transform: translateY(-0.35rem) scale(0.85); }
 }
 
-/* Los 3 puntitos aparecen justo después de la última letra y luego
-   quedan "saltando" en bucle, como un indicador de escritura. */
+/* Los 3 puntitos acompañan el mismo ciclo de 20s que las letras:
+   aparecen justo cuando la palabra ya está completa (~6s) y se ocultan
+   cuando la palabra empieza a desvanecerse (~11s), en vez de aparecer
+   una sola vez y quedarse fijos para siempre. */
 .marca-puntos {
   opacity: 0;
-  animation: marca-puntos-aparece 0.3s ease forwards;
-  animation-delay: 1.05s;
+  animation: marca-puntos-ciclo 20s ease-in-out infinite;
 }
 
-@keyframes marca-puntos-aparece {
-  from { opacity: 0; transform: translateY(0.35rem); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes marca-puntos-ciclo {
+  0%, 28%  { opacity: 0; transform: translateY(0.35rem); }
+  32%      { opacity: 1; transform: translateY(0); }
+  53%      { opacity: 1; transform: translateY(0); }
+  58%, 100% { opacity: 0; transform: translateY(0.35rem); }
 }
 
 .marca-puntos span {
