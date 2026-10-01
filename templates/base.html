@@ -61,6 +61,7 @@
   {% block contenido %}{% endblock %}
 
   <footer class="footer">
+    {% if config.envios_nacionales %}<div class="footer-envios">🚚 {{ config.texto_envios }}</div>{% endif %}
     &copy; {% now "Y" %} {{ config.nombre_tienda|default:"Misael Toys" }} — hecho a mano, impreso en 3D, en Potosí, Bolivia.<br>
     Una iniciativa del <a href="https://neuromisael.com/" rel="noopener">Centro de Neurodesarrollo Infantil MISAEL · Potosí</a>
   </footer>

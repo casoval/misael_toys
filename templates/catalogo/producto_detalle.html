@@ -61,6 +61,31 @@
       </div>
       {% endif %}
 
+      {% if producto.tiene_medidas %}
+      <div class="detalle-medidas">
+        <div class="detalle-medidas-titulo">📏 Medidas</div>
+        {% if producto.largo_cm or producto.ancho_cm or producto.alto_cm %}
+        <div class="medidas-grid">
+          {% if producto.largo_cm %}<div><span>Largo</span><b>{{ producto.largo_cm|floatformat:"-1" }} cm</b></div>{% endif %}
+          {% if producto.ancho_cm %}<div><span>Ancho</span><b>{{ producto.ancho_cm|floatformat:"-1" }} cm</b></div>{% endif %}
+          {% if producto.alto_cm %}<div><span>Alto</span><b>{{ producto.alto_cm|floatformat:"-1" }} cm</b></div>{% endif %}
+        </div>
+        {% endif %}
+        {% if producto.medidas_nota %}<p class="medidas-nota">{{ producto.medidas_nota }}</p>{% endif %}
+        {% if producto.referencia_tamano %}<p class="medidas-referencia">✋ {{ producto.referencia_tamano }}</p>{% endif %}
+      </div>
+      {% endif %}
+
+      {% if config.envios_nacionales %}
+      <div class="detalle-envio">
+        <span aria-hidden="true">🚚</span>
+        <div>
+          <b>{{ config.texto_envios }}</b>
+          {% if config.detalle_envios %}<small>{{ config.detalle_envios }}</small>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
       {% if whatsapp_url %}
       <a href="{{ whatsapp_url }}" target="_blank" rel="noopener" class="btn-whatsapp">
         Consultar por WhatsApp

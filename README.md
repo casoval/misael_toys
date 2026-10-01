@@ -36,6 +36,14 @@ Proyecto **totalmente independiente** del sistema del centro de terapias
   de más a menos "me gusta" — así ves de un vistazo qué le gusta más a la
   gente.
 
+- **Envíos a nivel nacional**: aviso visible en la portada, en la ficha de cada
+  producto y en el pie de página. El texto se edita en *Configuración del sitio →
+  Envíos* (puedes apagarlo o agregar una línea de detalle).
+- **Medidas por producto**: largo, ancho y alto en cm, una nota libre (para sets,
+  ej. "Anillos de 4 a 8 cm") y una comparación cotidiana (ej. "Cabe en la palma de
+  una mano adulta"). Se cargan en *Productos → Medidas*, se muestran en la ficha
+  y un resumen corto aparece en la tarjeta del catálogo.
+
 ## Cómo correrlo en local
 
 ```bash

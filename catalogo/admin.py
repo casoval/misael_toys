@@ -65,6 +65,11 @@ class ProductoAdmin(admin.ModelAdmin):
         ("Descripción", {
             "fields": ("descripcion_corta", "descripcion")
         }),
+        ("Medidas (se muestran al cliente)", {
+            "fields": ("largo_cm", "ancho_cm", "alto_cm", "medidas_nota", "referencia_tamano"),
+            "description": "Mide la pieza ya terminada. El cliente no puede adivinar el tamaño solo con la foto: "
+                            "estos datos aparecen en la ficha del producto.",
+        }),
         ("Filtros / atributos", {
             "fields": ("atributos",),
             "description": "Selecciona los valores que aplican a este producto (ej. Material: PLA, Color: Azul)."
@@ -133,6 +138,9 @@ class ConfiguracionSitioAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Datos de la tienda", {
             "fields": ("nombre_tienda", "texto_bienvenida", "horario_atencion")
+        }),
+        ("Envíos", {
+            "fields": ("envios_nacionales", "texto_envios", "detalle_envios"),
         }),
         ("Contacto", {
             "fields": ("whatsapp_numero", "mensaje_whatsapp_base", "telefono", "email_contacto")

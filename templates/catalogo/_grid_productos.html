@@ -32,6 +32,7 @@
       {% if producto.categoria %}<span class="tarjeta-categoria" style="background:{{ producto.categoria.color_fondo }};">{{ producto.categoria.nombre }}</span>{% endif %}
       <div class="tarjeta-nombre">{{ producto.nombre }}</div>
       {% if producto.descripcion_corta %}<div class="tarjeta-desc">{{ producto.descripcion_corta }}</div>{% endif %}
+      {% if producto.medidas_resumen %}<div class="tarjeta-medidas">📏 {{ producto.medidas_resumen }}</div>{% endif %}
       <div class="tarjeta-precio">Bs. {{ producto.precio|floatformat:'-2' }}</div>
     </div>
   </a>

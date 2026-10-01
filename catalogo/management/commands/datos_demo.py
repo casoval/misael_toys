@@ -69,6 +69,8 @@ class Command(BaseCommand):
                 "atributos": [pla, edad_1_3, multicolor],
                 "filamento": filamento_pla,
                 "peso_gramos": 80,
+                "largo_cm": 6, "ancho_cm": 6, "alto_cm": 6,
+                "referencia_tamano": "Cabe en la palma de una mano adulta",
                 "horas_impresion": 3,
             },
             {
@@ -80,6 +82,8 @@ class Command(BaseCommand):
                 "atributos": [petg, edad_1_3, azul],
                 "filamento": filamento_petg,
                 "peso_gramos": 110,
+                "alto_cm": 14, "ancho_cm": 8,
+                "medidas_nota": "Anillos de 4 a 8 cm de diámetro",
                 "horas_impresion": 4,
             },
             {
@@ -91,6 +95,7 @@ class Command(BaseCommand):
                 "atributos": [pla, edad_3_6, verde],
                 "filamento": filamento_pla,
                 "peso_gramos": 95,
+                "medidas_nota": "Set de 6 engranajes, de 3 a 7 cm de diámetro",
                 "horas_impresion": 3.5,
             },
             {

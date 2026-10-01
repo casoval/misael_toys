@@ -163,6 +163,29 @@ class Producto(models.Model):
     )
     orden = models.PositiveIntegerField(default=0)
 
+    # --- Medidas (se muestran al público en la ficha del producto) ---
+    largo_cm = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        verbose_name="Largo (cm)", help_text="Lado más largo de la pieza ya armada, en centímetros",
+    )
+    ancho_cm = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        verbose_name="Ancho (cm)",
+    )
+    alto_cm = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        verbose_name="Alto (cm)",
+    )
+    medidas_nota = models.CharField(
+        max_length=200, blank=True,
+        help_text="Para sets o piezas variadas. Ej: 'Anillos de 4 a 8 cm de diámetro' o 'Set de 6 piezas'",
+    )
+    referencia_tamano = models.CharField(
+        max_length=120, blank=True,
+        help_text="Comparación cotidiana para que el cliente se imagine el tamaño. "
+                   "Ej: 'Cabe en la palma de una mano adulta' o 'Similar a una pelota de tenis'",
+    )
+
     # --- Datos para calcular un precio sugerido (uso interno, no se muestran al público) ---
     filamento = models.ForeignKey(
         Filamento, on_delete=models.SET_NULL, null=True, blank=True, related_name="productos",
@@ -217,6 +240,22 @@ class Producto(models.Model):
         la velocidad, porque se cargan varias tarjetas a la vez."""
         primera = self.imagenes.first()
         return primera.miniatura if primera else None
+
+    @staticmethod
+    def _fmt_cm(valor):
+        # 8.0 -> "8", 8.5 -> "8.5"
+        return f"{valor:.1f}".rstrip("0").rstrip(".")
+
+    @property
+    def tiene_medidas(self):
+        return any([self.largo_cm, self.ancho_cm, self.alto_cm, self.medidas_nota, self.referencia_tamano])
+
+    @property
+    def medidas_resumen(self):
+        """Texto corto para la tarjeta del catálogo, ej. '8 × 8 × 8 cm'.
+        Solo usa las medidas numéricas; si no hay ninguna, devuelve ''."""
+        partes = [self._fmt_cm(v) for v in (self.largo_cm, self.ancho_cm, self.alto_cm) if v]
+        return f"{' × '.join(partes)} cm" if partes else ""
 
     def calcular_costo_y_precio_sugerido(self):
         """Calcula el costo estimado y un precio de venta sugerido, a partir de:
@@ -323,6 +362,21 @@ class ConfiguracionSitio(models.Model):
         default="Jugar · Explorar · Aprender — juguetes sensoriales impresos en 3D",
     )
     horario_atencion = models.CharField(max_length=150, blank=True)
+
+    # --- Envíos ---
+    envios_nacionales = models.BooleanField(
+        default=True, verbose_name="Mostrar 'Envíos a nivel nacional'",
+        help_text="Si está marcado, se muestra el aviso de envíos en la portada, en cada producto y en el pie de página.",
+    )
+    texto_envios = models.CharField(
+        max_length=120, default="Envíos a todo el país", verbose_name="Mensaje corto de envíos",
+        help_text="Es el texto principal del aviso. Ej: 'Envíos a todo el país'",
+    )
+    detalle_envios = models.CharField(
+        max_length=250, blank=True, verbose_name="Detalle de envíos (opcional)",
+        help_text="Una línea extra con condiciones reales, ej: 'Coordinamos costo y empresa de transporte por WhatsApp'. "
+                   "Escribe solo lo que realmente ofreces.",
+    )
 
     # --- Costos para calcular el "costo por hora de impresora" ---
     precio_impresora = models.DecimalField(

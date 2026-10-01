@@ -170,6 +170,11 @@ def seo_producto(producto, config):
         prod["image"] = imagenes
     if cat:
         prod["category"] = cat.nombre
+    # Medidas reales (si están cargadas) para que Google las entienda.
+    for campo, clave in (("ancho_cm", "width"), ("alto_cm", "height"), ("largo_cm", "depth")):
+        valor = getattr(producto, campo)
+        if valor:
+            prod[clave] = {"@type": "QuantitativeValue", "value": float(valor), "unitCode": "CMT"}
     props = [
         {"@type": "PropertyValue", "name": v.atributo.nombre, "value": v.valor}
         for v in producto.atributos.all()

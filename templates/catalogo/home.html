@@ -49,6 +49,13 @@
   </div>
 </div>
 
+{% if config.envios_nacionales %}
+<div class="franja-envios">
+  <span aria-hidden="true">🚚</span>
+  <span><b>{{ config.texto_envios }}</b>{% if config.detalle_envios %} · {{ config.detalle_envios }}{% endif %}</span>
+</div>
+{% endif %}
+
 <div class="layout">
 
   <!-- Filtros: todo lo que ve aquí lo controla el admin (categorías y atributos que cree) -->
