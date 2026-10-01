@@ -4,17 +4,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block titulo %}Misael Toys{% endblock %}</title>
-  <meta name="description" content="{% block meta_descripcion %}Jugar · Explorar · Aprender — juguetes sensoriales impresos en 3D{% endblock %}">
+  <title>{% block titulo %}{{ seo.title|default:"Misael Toys" }}{% endblock %}</title>
+  <meta name="description" content="{% block meta_descripcion %}{{ seo.description|default:'Juguetes sensoriales y antiestrés impresos en 3D · Misael Toys, Bolivia' }}{% endblock %}">
+  {% if seo.robots %}<meta name="robots" content="{{ seo.robots }}">{% endif %}
+  {% if seo.canonical %}<link rel="canonical" href="{{ seo.canonical }}">{% endif %}
   <link rel="icon" type="image/png" href="{% static 'img/favicon.png' %}">
 
   {% block meta_og %}
-  <meta property="og:type" content="website">
+  <meta property="og:type" content="{{ seo.og_type|default:'website' }}">
+  <meta property="og:locale" content="es_BO">
   <meta property="og:site_name" content="{{ config.nombre_tienda|default:'Misael Toys' }}">
-  <meta property="og:title" content="{{ config.nombre_tienda|default:'Misael Toys' }}">
-  <meta property="og:description" content="{{ config.texto_bienvenida }}">
-  <meta property="og:image" content="{% static 'img/logo.png' %}">
+  <meta property="og:title" content="{{ seo.og_title|default:seo.title|default:config.nombre_tienda|default:'Misael Toys' }}">
+  <meta property="og:description" content="{{ seo.description|default:config.texto_bienvenida }}">
+  {% if seo.canonical %}<meta property="og:url" content="{{ seo.canonical }}">{% endif %}
+  {% if seo.image %}<meta property="og:image" content="{{ seo.image }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{ seo.image }}">{% endif %}
   {% endblock %}
+  {% if seo.schema_json %}<script type="application/ld+json">{{ seo.schema_json|safe }}</script>{% endif %}
 
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
@@ -54,7 +61,8 @@
   {% block contenido %}{% endblock %}
 
   <footer class="footer">
-    &copy; {% now "Y" %} {{ config.nombre_tienda|default:"Misael Toys" }} — hecho a mano, impreso en 3D.
+    &copy; {% now "Y" %} {{ config.nombre_tienda|default:"Misael Toys" }} — hecho a mano, impreso en 3D, en Potosí, Bolivia.<br>
+    Una iniciativa del <a href="https://neuromisael.com/" rel="noopener">Centro de Neurodesarrollo Infantil MISAEL · Potosí</a>
   </footer>
 
   {% if config.whatsapp_numero %}

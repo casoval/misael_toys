@@ -1184,3 +1184,17 @@ body.sin-scroll {
     transform: none !important;
   }
 }
+
+/* --- SEO: H1 del home, enlaces a categorías y texto informativo --- */
+.hero-h1 { margin: 0; font-size: 1.5rem; line-height: 1.2; color: var(--ink); }
+@media (min-width: 768px) { .hero-h1 { font-size: 1.9rem; } }
+.categoria-intro p { margin: 0.4rem 0 0; color: var(--ink); line-height: 1.55; }
+.explora-categorias { max-width: var(--ancho-contenido); margin: 0.5rem auto 0.75rem; padding: 0 1rem;
+  display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.explora-titulo { font-weight: 700; color: var(--ink); }
+.explora-link { padding: 0.35rem 0.85rem; border-radius: 999px; background: #fff; color: var(--ink);
+  border: 1px solid rgba(0,0,0,.12); text-decoration: none; font-size: 0.92rem; }
+.explora-link:hover, .explora-link[aria-current="page"] { background: #2F9BE0; color: #fff; border-color: #2F9BE0; }
+.seo-texto { max-width: var(--ancho-contenido); margin: 2rem auto 1rem; padding: 0 1rem; color: var(--ink); line-height: 1.6; }
+.seo-texto h2 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+.footer a { color: inherit; text-decoration: underline; }

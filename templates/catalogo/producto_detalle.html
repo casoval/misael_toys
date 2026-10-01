@@ -1,18 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block titulo %}{{ producto.nombre }} — {{ config.nombre_tienda }}{% endblock %}
-{% block meta_descripcion %}{{ producto.descripcion_corta|default:producto.descripcion|truncatechars:160 }}{% endblock %}
-
-{% block meta_og %}
-<meta property="og:type" content="product">
-<meta property="og:site_name" content="{{ config.nombre_tienda }}">
-<meta property="og:title" content="{{ producto.nombre }} — Bs. {{ producto.precio|floatformat:'-2' }}">
-<meta property="og:description" content="{{ producto.descripcion_corta|default:producto.descripcion|truncatechars:160 }}">
-<meta property="og:url" content="{{ url_absoluta }}">
-{% if imagen_absoluta %}<meta property="og:image" content="{{ imagen_absoluta }}">{% endif %}
-{% endblock %}
-
 {% block contenido %}
 <div class="detalle">
   <a href="{% url 'catalogo:home' %}" class="detalle-volver">&larr; Volver al catálogo</a>
@@ -22,7 +10,7 @@
       {% with primera=producto.imagenes.first %}
       <div class="detalle-imagen-principal" id="imagen-principal">
         {% if primera %}
-          <img src="{{ primera.grande }}" alt="{{ producto.nombre }}" id="img-grande">
+          <img src="{{ primera.grande }}" alt="{{ primera.alt_text|default:producto.nombre }} — juguete impreso en 3D" id="img-grande">
         {% else %}
           <span class="sin-imagen">Sin foto aún</span>
         {% endif %}
@@ -32,7 +20,7 @@
       {% if producto.imagenes.count > 1 %}
       <div class="galeria-miniaturas">
         {% for img in producto.imagenes.all %}
-        <img src="{{ img.miniatura_chica }}" alt="{{ producto.nombre }}"
+        <img src="{{ img.miniatura_chica }}" alt="{{ img.alt_text|default:producto.nombre }} — vista {{ forloop.counter }}"
              onclick="document.getElementById('img-grande').src='{{ img.grande }}'">
         {% endfor %}
       </div>

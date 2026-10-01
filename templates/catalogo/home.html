@@ -1,8 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block titulo %}{{ config.nombre_tienda|default:"Misael Toys" }}{% endblock %}
-
 {% block boton_filtros %}
 <button type="button" class="btn-filtros-movil" id="btn-filtros-movil" aria-label="Abrir filtros" aria-controls="panel-filtros" aria-expanded="false">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -20,10 +18,17 @@
 <div class="hero-inicio">
   <img src="{% static 'img/logo.png' %}" alt="Misael Toys" class="logo-hero">
   <div class="hero-texto">
+    <h1 class="hero-h1">{{ seo.h1 }}</h1>
     <p class="intro">{{ config.texto_bienvenida }}</p>
+    {% if categoria_pagina and categoria_pagina.descripcion %}<div class="categoria-intro">{{ categoria_pagina.descripcion|linebreaks }}</div>{% endif %}
     <span class="sello-terapeutas">🩺 Creado junto a nuestro equipo de terapeutas ocupacionales</span>
   </div>
 </div>
+
+<nav class="explora-categorias" aria-label="Categorías de juguetes">
+  <span class="explora-titulo">Explora por categoría:</span>
+  {% for c in categorias %}<a href="{% url 'catalogo:categoria_detalle' c.slug %}" class="explora-link"{% if categoria_pagina and categoria_pagina.pk == c.pk %} aria-current="page"{% endif %}>{{ c.nombre }}</a>{% endfor %}
+</nav>
 
 <div class="promo-banner">
   <div class="promo-banner-inner">
@@ -118,6 +123,17 @@
   </section>
 
 </div>
+
+<section class="seo-texto">
+  <h2>Juguetes sensoriales y antiestrés impresos en 3D, hechos en Potosí</h2>
+  <p>En Misael Toys imprimimos en 3D juguetes articulados, texturizados y giratorios para explorar con las manos:
+  frutas, verduras, comida y animales que se doblan, se estiran y se presionan. Son un apoyo para el juego sensorial, la
+  calma y la <strong>motricidad fina</strong> (agarre, pinza y coordinación mano-ojo), y los creamos con el apoyo del equipo
+  de terapeutas del <a href="https://neuromisael.com/" rel="noopener">Centro de Neurodesarrollo Infantil MISAEL</a>.</p>
+  <p>Si necesitas ayuda para elegir según la edad o las necesidades de tu hijo o hija, escríbenos por WhatsApp. Algunas piezas
+  son pequeñas, por lo que recomendamos el uso con supervisión de un adulto. Estos juguetes acompañan el juego y no
+  reemplazan la evaluación ni las terapias de un profesional.</p>
+</section>
 
 <script>
   (function () {

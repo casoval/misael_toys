@@ -6,7 +6,10 @@ from urllib.parse import quote
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.http import require_POST
 
+from django.http import Http404
+
 from .models import Categoria, Atributo, Producto, ConfiguracionSitio, LikeProducto
+from . import seo
 
 COOKIE_VISITANTE = "mt_visitante"
 DOS_ANIOS_EN_SEGUNDOS = 60 * 60 * 24 * 365 * 2
@@ -119,9 +122,15 @@ def _contexto_filtros(request):
 PRODUCTOS_POR_PAGINA = 12
 
 
-def home(request):
-    """Página principal: el catálogo completo se ve directamente aquí, con filtros."""
+def _vista_catalogo(request, categoria_pagina=None):
+    """Catálogo con filtros. Lo usan el home y las páginas de categoría
+    (que son el home con una categoría ya elegida y su propio SEO)."""
     from django.core.paginator import Paginator
+
+    params_originales = request.GET.copy()
+    if categoria_pagina and "categoria" not in request.GET:
+        request.GET = request.GET.copy()
+        request.GET["categoria"] = categoria_pagina.slug
 
     productos_qs = _productos_filtrados(request)
     paginator = Paginator(productos_qs, PRODUCTOS_POR_PAGINA)
@@ -133,11 +142,14 @@ def home(request):
     params.pop("page", None)
     querystring_sin_pagina = params.urlencode()
 
+    config = ConfiguracionSitio.get()
     contexto = {
         "productos": pagina,
         "total_resultados": paginator.count,
         "querystring_sin_pagina": querystring_sin_pagina,
-        "config": ConfiguracionSitio.get(),
+        "config": config,
+        "categoria_pagina": categoria_pagina,
+        "seo": seo.seo_catalogo(params_originales, config, pagina, pagina.number, categoria_pagina),
         **_contexto_filtros(request),
     }
 
@@ -147,6 +159,17 @@ def home(request):
         return render(request, "catalogo/_grid_productos.html", contexto)
 
     return render(request, "catalogo/home.html", contexto)
+
+
+def home(request):
+    """Página principal: el catálogo completo se ve directamente aquí, con filtros."""
+    return _vista_catalogo(request)
+
+
+def categoria_detalle(request, slug):
+    """Página propia (indexable) de una categoría: ej. /categoria/motricidad-fina/"""
+    categoria = get_object_or_404(Categoria, slug=slug, activa=True)
+    return _vista_catalogo(request, categoria_pagina=categoria)
 
 
 def producto_detalle(request, slug):
@@ -178,11 +201,7 @@ def producto_detalle(request, slug):
         "whatsapp_url": whatsapp_url,
         "relacionados": relacionados,
         "ya_dio_like": ya_dio_like,
-        "url_absoluta": request.build_absolute_uri(),
-        "imagen_absoluta": (
-            request.build_absolute_uri(producto.imagen_principal)
-            if producto.imagen_principal else None
-        ),
+        "seo": seo.seo_producto(producto, config),
     }
     response = render(request, "catalogo/producto_detalle.html", contexto)
     return _setear_cookie_visitante_si_falta(response, visitante_id, es_nuevo)

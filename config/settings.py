@@ -28,6 +28,10 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv())
 
+# URL pública de la tienda (SEO: canonical, sitemap, datos estructurados, og:image).
+# Siempre con https y sin barra final.
+SITE_URL = config('SITE_URL', default='https://tienda.neuromisael.com')
+
 
 # Application definition
 
@@ -38,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sitemaps',
 
     # Cloudinary (fotos de productos)
     'cloudinary_storage',

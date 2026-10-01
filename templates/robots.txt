@@ -1,3 +1,11 @@
 User-agent: *
 Allow: /
 Disallow: /admin/
+Disallow: /*?q=
+Disallow: /*&q=
+Disallow: /*precio_min=
+Disallow: /*precio_max=
+Disallow: /*valor=
+Disallow: /producto/*/like/
+
+Sitemap: {{ site_url }}/sitemap.xml
