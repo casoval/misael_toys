@@ -6,13 +6,18 @@
   <a href="{% url 'catalogo:home' %}" class="detalle-volver">&larr; Volver al catálogo</a>
 
   <div class="detalle-grid">
-    <div>
+    <div class="detalle-galeria">
       {% with primera=producto.imagenes.first %}
       <div class="detalle-imagen-principal" id="imagen-principal">
         {% if primera %}
           <img src="{{ primera.grande }}" alt="{{ primera.alt_text|default:producto.nombre }} — juguete impreso en 3D" id="img-grande">
         {% else %}
           <span class="sin-imagen">Sin foto aún</span>
+        {% endif %}
+        {% if producto.imagenes.count > 1 %}
+        <button type="button" class="galeria-flecha galeria-flecha-prev" id="galeria-prev" aria-label="Foto anterior">&#10094;</button>
+        <button type="button" class="galeria-flecha galeria-flecha-next" id="galeria-next" aria-label="Foto siguiente">&#10095;</button>
+        <span class="galeria-contador" id="galeria-contador">1 / {{ producto.imagenes.count }}</span>
         {% endif %}
       </div>
       {% endwith %}
@@ -21,13 +26,14 @@
       <div class="galeria-miniaturas">
         {% for img in producto.imagenes.all %}
         <img src="{{ img.miniatura_chica }}" alt="{{ img.alt_text|default:producto.nombre }} — vista {{ forloop.counter }}"
-             onclick="document.getElementById('img-grande').src='{{ img.grande }}'">
+             class="{% if forloop.first %}activa{% endif %}" tabindex="0"
+             data-grande="{{ img.grande }}" data-alt="{{ img.alt_text|default:producto.nombre }} — juguete impreso en 3D">
         {% endfor %}
       </div>
       {% endif %}
     </div>
 
-    <div>
+    <div class="detalle-info">
       {% if producto.destacado or producto.recomendado_por_terapeutas %}
       <div class="tarjeta-badges">
         {% if producto.recomendado_por_terapeutas %}<span class="badge-recomendado">🩺 Recomendado por terapeutas</span>{% endif %}
@@ -58,26 +64,6 @@
         <span class="chip-atributo"><b>{{ valor.atributo.nombre }}:</b> {{ valor.valor }}</span>
         {% endif %}
         {% endfor %}
-      </div>
-      {% endif %}
-
-      {% if colores_filamento %}
-      <div class="detalle-colores">
-        <div class="detalle-colores-titulo">🎨 Colores disponibles</div>
-        <p class="detalle-colores-nota">
-          Los colores de las imágenes son <b>referenciales</b>: son los recomendados
-          según las características del juguete. Sin embargo, <b>cualquier juguete se
-          puede realizar en los siguientes colores</b>:
-        </p>
-        <ul class="colores-grid">
-          {% for nombre, hex in colores_filamento %}
-          <li class="color-item">
-            <span class="swatch swatch-color" style="background-color: {{ hex }};"></span>
-            <span class="color-nombre">{{ nombre }}</span>
-          </li>
-          {% endfor %}
-        </ul>
-        <p class="detalle-colores-aviso">Los tonos en pantalla pueden variar levemente del filamento real.</p>
       </div>
       {% endif %}
 
@@ -121,6 +107,26 @@
       <div class="detalle-descripcion">{{ producto.descripcion|linebreaks }}</div>
       {% endif %}
     </div>
+
+  {% if colores_filamento %}
+  <div class="detalle-colores">
+    <div class="detalle-colores-titulo">🎨 Colores disponibles</div>
+    <p class="detalle-colores-nota">
+      Los colores de las imágenes son <b>referenciales</b>: son los recomendados
+      según las características del juguete. Sin embargo, <b>cualquier juguete se
+      puede realizar en los siguientes colores</b>:
+    </p>
+    <ul class="colores-grid">
+      {% for nombre, hex in colores_filamento %}
+      <li class="color-item">
+        <span class="swatch swatch-color" style="background-color: {{ hex }};"></span>
+        <span class="color-nombre">{{ nombre }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="detalle-colores-aviso">Los tonos en pantalla pueden variar levemente del filamento real.</p>
+  </div>
+  {% endif %}
   </div>
 
   {% if relacionados %}
@@ -146,4 +152,51 @@
   </div>
   {% endif %}
 </div>
+
+<script>
+(function () {
+  var minis = document.querySelectorAll('.galeria-miniaturas img');
+  var grande = document.getElementById('img-grande');
+  if (!grande || minis.length < 2) return;
+  var n = minis.length, i = 0;
+  var cont = document.getElementById('galeria-contador');
+
+  function ir(k) {
+    i = (k + n) % n;
+    grande.src = minis[i].dataset.grande;
+    grande.alt = minis[i].dataset.alt || minis[i].alt;
+    for (var j = 0; j < n; j++) minis[j].classList.toggle('activa', j === i);
+    if (cont) cont.textContent = (i + 1) + ' / ' + n;
+  }
+
+  document.getElementById('galeria-prev').addEventListener('click', function () { ir(i - 1); });
+  document.getElementById('galeria-next').addEventListener('click', function () { ir(i + 1); });
+  for (var j = 0; j < n; j++) {
+    (function (k) {
+      minis[k].addEventListener('click', function () { ir(k); });
+      minis[k].addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ir(k); }
+      });
+    })(j);
+  }
+
+  // Teclado: flechas izquierda/derecha (sin interferir con el buscador)
+  document.addEventListener('keydown', function (e) {
+    var t = e.target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+    if (e.key === 'ArrowLeft') ir(i - 1);
+    else if (e.key === 'ArrowRight') ir(i + 1);
+  });
+
+  // Deslizar con el dedo en el celular
+  var x0 = null, caja = document.getElementById('imagen-principal');
+  caja.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+  caja.addEventListener('touchend', function (e) {
+    if (x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 40) ir(dx < 0 ? i + 1 : i - 1);
+    x0 = null;
+  }, { passive: true });
+})();
+</script>
 {% endblock %}

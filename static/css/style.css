@@ -856,14 +856,30 @@ body.sin-scroll {
 .detalle-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2rem;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "galeria info"
+    "colores info";
+  gap: 1.125rem 2rem;
 }
 
+.detalle-galeria { grid-area: galeria; min-width: 0; }
+.detalle-info    { grid-area: info; min-width: 0; align-self: start; }
+.detalle-grid > .detalle-colores { grid-area: colores; margin-top: 0; align-self: start; }
+
 @media (max-width: 720px) {
-  .detalle-grid { grid-template-columns: 1fr; }
+  .detalle-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    grid-template-areas:
+      "galeria"
+      "info"
+      "colores";
+  }
 }
 
 .detalle-imagen-principal {
+  position: relative;
   aspect-ratio: 1 / 1;
   background: var(--card-bg);
   border: 1px solid var(--clay);
@@ -892,8 +908,49 @@ body.sin-scroll {
   height: 3.75rem;
   object-fit: cover;
   border-radius: 0.375rem;
-  border: 1px solid var(--clay);
+  border: 2px solid var(--clay);
   cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.galeria-miniaturas img:hover,
+.galeria-miniaturas img.activa { opacity: 1; }
+.galeria-miniaturas img.activa { border-color: var(--teal); }
+
+.galeria-flecha {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.88);
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 0.125rem 0.5rem rgba(0,0,0,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.galeria-flecha:hover { background: #fff; transform: translateY(-50%) scale(1.06); }
+.galeria-flecha:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.galeria-flecha-prev { left: 0.625rem; }
+.galeria-flecha-next { right: 0.625rem; }
+
+.galeria-contador {
+  position: absolute;
+  right: 0.625rem;
+  bottom: 0.625rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 1rem;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 0.75rem;
 }
 
 .detalle-precio {
