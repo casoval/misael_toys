@@ -10,6 +10,7 @@ from django.http import Http404
 
 from .models import Categoria, Atributo, Producto, ConfiguracionSitio, LikeProducto
 from . import seo
+from .colores import COLORES_FILAMENTO
 
 COOKIE_VISITANTE = "mt_visitante"
 DOS_ANIOS_EN_SEGUNDOS = 60 * 60 * 24 * 365 * 2
@@ -202,6 +203,7 @@ def producto_detalle(request, slug):
         "relacionados": relacionados,
         "ya_dio_like": ya_dio_like,
         "seo": seo.seo_producto(producto, config),
+        "colores_filamento": COLORES_FILAMENTO,
     }
     response = render(request, "catalogo/producto_detalle.html", contexto)
     return _setear_cookie_visitante_si_falta(response, visitante_id, es_nuevo)

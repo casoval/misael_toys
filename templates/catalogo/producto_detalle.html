@@ -61,6 +61,26 @@
       </div>
       {% endif %}
 
+      {% if colores_filamento %}
+      <div class="detalle-colores">
+        <div class="detalle-colores-titulo">🎨 Colores disponibles</div>
+        <p class="detalle-colores-nota">
+          Los colores de las imágenes son <b>referenciales</b>: son los recomendados
+          según las características del juguete. Sin embargo, <b>cualquier juguete se
+          puede realizar en los siguientes colores</b>:
+        </p>
+        <ul class="colores-grid">
+          {% for nombre, hex in colores_filamento %}
+          <li class="color-item">
+            <span class="swatch swatch-color" style="background-color: {{ hex }};"></span>
+            <span class="color-nombre">{{ nombre }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="detalle-colores-aviso">Los tonos en pantalla pueden variar levemente del filamento real.</p>
+      </div>
+      {% endif %}
+
       {% if producto.tiene_medidas %}
       <div class="detalle-medidas">
         <div class="detalle-medidas-titulo">📏 Medidas</div>
