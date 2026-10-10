@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from catalogo.models import Categoria, Producto
+from catalogo.models import Atributo, Categoria, Producto, ValorAtributo
 
 from . import servicios
 from .models import Cotizacion, MovimientoStock, ReglaDescuento, Stock, Ubicacion, Venta
@@ -528,3 +528,81 @@ class UsuariosTests(Base):
         r = self.client.post(reverse("panel:login"), {"username": "ana", "password": "x"})
         self.assertContains(r, "Demasiados intentos")
         self.assertNotIn("_auth_user_id", self.client.session)
+
+
+class FiltrosPanelTests(Base):
+    """Los filtros del panel se generan solos a partir de lo que el admin crea (igual que en el sitio público)."""
+
+    def setUp(self):
+        super().setUp()
+        self.material = Atributo.objects.create(nombre="Material", orden=1)
+        self.pla = ValorAtributo.objects.create(atributo=self.material, valor="PLA")
+        self.petg = ValorAtributo.objects.create(atributo=self.material, valor="PETG")
+        self.sin_uso = ValorAtributo.objects.create(atributo=self.material, valor="Madera")  # nadie lo usa
+        self.color = Atributo.objects.create(nombre="Color", orden=2)
+        self.azul = ValorAtributo.objects.create(atributo=self.color, valor="Azul", color_hex="#3B82F6")
+        self.interno = Atributo.objects.create(nombre="Interno", orden=3, mostrar_como_filtro=False)
+        self.val_interno = ValorAtributo.objects.create(atributo=self.interno, valor="Lote 7")
+        self.cat_vacia = Categoria.objects.create(nombre="Sin productos")
+        self.p1.atributos.add(self.pla, self.azul, self.val_interno)
+        self.p2.atributos.add(self.petg)
+        servicios.registrar_ingreso(self.p1, self.casa, 5, self.admin)
+        self.client.login(username="ana", password="x")
+
+    def test_stock_muestra_filtros_generados(self):
+        r = self.client.get(reverse("panel:stock"))
+        self.assertContains(r, "data-filtros")
+        self.assertContains(r, "Táctil")                      # categoría con productos
+        self.assertNotContains(r, "Sin productos")            # sin productos: no hay filtro fantasma
+        self.assertContains(r, "Material")
+        for valor in ("PLA", "PETG", "Azul"):
+            self.assertContains(r, valor)
+        self.assertNotContains(r, "Madera")                   # valor que ningún producto usa
+        self.assertNotContains(r, "Lote 7")                   # atributo oculto de los filtros
+        self.assertContains(r, 'style="background-color: #3B82F6;"')   # puntito de color
+        self.assertContains(r, "Hay en Casa")                 # filtro por lugar
+
+    def test_tarjetas_de_stock_traen_datos_para_filtrar(self):
+        r = self.client.get(reverse("panel:stock"))
+        self.assertContains(r, f'data-categoria="{self.cat.pk}"')
+        self.assertContains(r, f' {self.pla.pk} ')
+        self.assertContains(r, 'data-precio="10"')
+        self.assertContains(r, f'data-u{self.casa.pk}="5"')
+        self.assertContains(r, 'data-total="5"')
+
+    def test_vender_y_cotizar_tienen_los_mismos_filtros(self):
+        for nombre in ("panel:venta_nueva", "panel:cotizacion_nueva"):
+            r = self.client.get(reverse(nombre))
+            self.assertContains(r, "data-filtros", msg_prefix=nombre)
+            self.assertContains(r, "PETG", msg_prefix=nombre)
+            datos = {p["nombre"]: p for p in r.context["productos_json"]}
+            self.assertEqual(datos["Pop it"]["categoria"], str(self.cat.pk))
+            self.assertCountEqual(datos["Pop it"]["valores"], [self.pla.pk, self.azul.pk, self.val_interno.pk])
+            self.assertEqual(datos["Cubo"]["categoria"], "")
+
+    def test_el_selector_sigue_sin_consultas_por_producto(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        self.client.get(reverse("panel:venta_nueva"))
+        with CaptureQueriesContext(connection) as pocas:
+            self.client.get(reverse("panel:venta_nueva"))
+        for i in range(12):
+            extra = Producto.objects.create(nombre=f"Extra {i}", precio=D("5"), categoria=self.cat)
+            extra.atributos.add(self.pla)
+        with CaptureQueriesContext(connection) as muchas:
+            self.client.get(reverse("panel:venta_nueva"))
+        self.assertEqual(len(pocas), len(muchas))
+
+
+class EnlacesPaginaPrincipalTests(Base):
+    def test_el_panel_tiene_enlace_a_la_pagina_principal(self):
+        self.client.login(username="ana", password="x")
+        for nombre in ("panel:stock", "panel:venta_nueva", "panel:ventas", "panel:cotizacion_nueva"):
+            r = self.client.get(reverse(nombre))
+            self.assertContains(r, 'href="/"', msg_prefix=nombre)
+            self.assertContains(r, "Página principal", msg_prefix=nombre)
+
+    def test_el_login_tiene_enlace_para_volver(self):
+        r = self.client.get(reverse("panel:login"))
+        self.assertContains(r, "Volver a la página principal")
+        self.assertContains(r, 'href="/"')

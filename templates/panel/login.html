@@ -10,5 +10,6 @@
     {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <button class="p-btn" type="submit">Entrar</button>
   </form>
+  <p class="p-login-volver"><a href="{% url 'catalogo:home' %}">← Volver a la página principal</a></p>
 </div>
 {% endblock %}

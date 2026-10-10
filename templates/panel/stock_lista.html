@@ -3,15 +3,7 @@
 {% block titulo %}Stock{% endblock %}
 {% block contenido %}
 <h1>Stock</h1>
-<form class="p-filtros" method="get">
-  <input type="search" name="q" placeholder="Buscar producto…" value="{{ q }}" data-filtro autocomplete="off">
-  <select name="donde">
-    <option value="">Todos los lugares</option>
-    {% for u in ubicaciones %}<option value="{{ u.pk }}" {% if donde == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
-  </select>
-  <label class="p-check"><input type="checkbox" name="con_stock" value="1" {% if con_stock %}checked{% endif %}> Solo con stock</label>
-  <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
-</form>
+{% include "panel/_filtros.html" with unidades=True %}
 
 {% if not ubicaciones %}
 <div class="p-msg warning">Todavía no hay lugares. Créalos en <a href="/admin/inventario/ubicacion/">Admin → Ubicaciones</a>.</div>
@@ -21,14 +13,15 @@
 <div class="p-msg warning">⚠ Hay <b>{{ por_cubrir }}</b> unidad{{ por_cubrir|pluralize:"es" }} vendida{{ por_cubrir|pluralize }} sin stock registrado (aparecen en rojo, con número negativo). Se compensan solas cuando agregues el stock, o corrígelas si el producto ya estaba físicamente.</div>
 {% endif %}
 
-<div class="p-vistabar">
-  <p class="p-soft">{{ filas|length }} producto{{ filas|length|pluralize }} · {{ total_unidades }} unidades en total</p>
+<div class="p-vistabar p-vistabar-fin">
   {% include "panel/_toggle_vista.html" %}
 </div>
 
 <div class="p-productos vista-tarjetas" data-vista-contenedor>
 {% for f in filas %}
-  <a class="p-prod {% if f.total <= 0 %}agotado{% endif %}" href="{% url 'panel:stock_producto' f.producto.pk %}" data-nombre="{{ f.producto.nombre }}">
+  <a class="p-prod {% if f.total <= 0 %}agotado{% endif %}" href="{% url 'panel:stock_producto' f.producto.pk %}" data-nombre="{{ f.producto.nombre }}"
+     data-categoria="{{ f.producto.categoria_id|default:'' }}" data-valores="{{ f.valores }}"
+     data-precio="{{ f.precio|floatformat:0 }}" data-total="{{ f.total }}"{% for l in f.lugares %} data-u{{ l.ubicacion.pk }}="{{ l.cantidad }}"{% endfor %}>
     <span class="p-prod-foto">{% if f.foto %}<img src="{{ f.foto }}" alt="" loading="lazy">{% else %}<i class="p-sinfoto"></i>{% endif %}</span>
     <b class="p-badge {% if f.total <= 0 %}cero{% endif %}">{{ f.total }}</b>
     <span class="p-prod-cuerpo">

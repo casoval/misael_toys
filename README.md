@@ -68,6 +68,10 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   categoría, por producto, con fechas de vigencia, acumulables o no. Las reglas
   no acumulables no se suman: se aplica solo la que más descuenta. Además cada
   venta/cotización admite un descuento adicional manual en Bs.
+- **Filtros** (Stock, Vender y Cotizar): los mismos que se van generando en el catálogo público —
+  categorías y atributos como Material, Edad o Color (los que tengan «mostrar como filtro»)— más
+  precio, «hay en [lugar]» y «solo con stock». Se aplican al instante, sin recargar. Dentro de un
+  mismo atributo se suman las opciones; entre atributos distintos se exige cumplir todos.
 - **Recibo de respaldo**: cada venta tiene un botón «Recibo de respaldo (PDF)»
   (una sola hoja, con firmas, marca «ANULADA» si se anuló). No muestra stock ni lugares.
 - **Sin decimales**: todo el dinero del panel y de los PDFs se calcula y se muestra
@@ -79,6 +83,7 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   del sitio abre un menú para elegir con quién hablar, y cada producto muestra un botón
   por número. Si no hay teléfonos de contacto, se muestran los de WhatsApp.
 - **PDFs**: la cotización y el recibo se abren directo en el navegador (no se fuerza la descarga).
+- **Página principal**: el panel y su login tienen un enlace «Página principal» para volver al sitio.
 - **Acceso**: el sitio público tiene un enlace «Acceder» en el encabezado
   (pantallas grandes) y otro en el pie, que llevan a `/panel/`.
 - **Cotizaciones**: eliges productos y cantidades, ves el total con las

@@ -10,7 +10,7 @@
       <h2>1. Toca los productos</h2>
       {% include "panel/_toggle_vista.html" %}
     </div>
-    <input type="search" class="p-buscar" placeholder="Buscar producto…" data-filtro autocomplete="off">
+    {% include "panel/_filtros.html" %}
     <div id="picker-aviso" class="p-aviso" aria-live="polite"></div>
     <div id="picker" class="p-productos vista-tarjetas" data-vista-contenedor></div>
   </div>

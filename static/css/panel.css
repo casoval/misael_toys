@@ -169,3 +169,39 @@ body.panel { background: var(--bg); }
   .p-dos { grid-template-columns: 1fr; }
   .p-kpis b { font-size: 1.05rem; }
 }
+
+/* ---------- Enlace a la página principal ---------- */
+.p-tienda { font-size: .88rem; padding: .3rem .7rem; border: 1px solid var(--clay); border-radius: 999px; color: var(--teal-dark) !important;
+  white-space: nowrap; background: #fff; }
+.p-tienda:hover { border-color: var(--teal); background: #eaf6f4; }
+.p-login-volver { text-align: center; margin: 1rem 0 0; font-size: .92rem; }
+
+/* ---------- Barra de filtros (Stock, Vender, Cotizar) ---------- */
+.p-fbar { margin: .4rem 0 .2rem; }
+.p-fcats { display: flex; gap: .4rem; overflow-x: auto; padding: .5rem 0 .4rem; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.p-fchip { display: inline-flex; align-items: center; gap: .35rem; flex: none; background: #fff; color: var(--ink); border: 1px solid #cfc8b8;
+  border-radius: 999px; padding: .35rem .8rem; font: inherit; font-size: .88rem; cursor: pointer; white-space: nowrap; }
+.p-fchip:hover { border-color: var(--teal); }
+.p-fchip.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+.p-fchip .categoria-punto { width: .6rem; height: .6rem; border-radius: 50%; display: inline-block; flex: none; }
+.p-fchip.on .categoria-punto { box-shadow: 0 0 0 1.5px #fff; }
+.p-fchip .swatch { width: .9rem; height: .9rem; border-radius: 50%; display: inline-block; border: 1px solid rgba(0,0,0,.25); flex: none; }
+
+.p-fmas { margin: .3rem 0; }
+.p-fmas > summary { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; list-style: none; color: var(--teal-dark); font-weight: 600;
+  font-size: .92rem; padding: .3rem .1rem; }
+.p-fmas > summary::-webkit-details-marker { display: none; }
+.p-fmas > summary::before { content: "▸"; font-size: .8rem; transition: transform .15s; }
+.p-fmas[open] > summary::before { transform: rotate(90deg); }
+.p-fcuenta { background: #f2a900; color: #3a2a00; border-radius: 999px; min-width: 1.3rem; padding: 0 .4rem; text-align: center; font-size: .78rem; }
+.p-fcuenta[hidden] { display: none; }
+.p-fmas-in { background: #fff; border: 1px solid var(--clay); border-radius: var(--radius); padding: .6rem .8rem; margin-top: .3rem; }
+.p-fgrupo { border: 0; padding: 0; margin: 0 0 .7rem; min-width: 0; }
+.p-fgrupo legend { font-weight: 700; font-size: .85rem; color: var(--ink-soft); padding: 0; margin-bottom: .3rem; }
+.p-fvalores { display: flex; flex-wrap: wrap; gap: .35rem; }
+.p-fprecio { display: flex; align-items: center; gap: .5rem; }
+.p-fprecio input { width: 100%; }
+.p-fresumen { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin: .4rem 0 .2rem; font-size: .88rem; color: var(--ink-soft); }
+.p-flimpiar { background: none; border: 0; color: #c0392b; font: inherit; font-size: .88rem; text-decoration: underline; cursor: pointer; padding: 0; }
+.p-flimpiar[hidden] { display: none; }
+.p-vistabar-fin { justify-content: flex-end; }

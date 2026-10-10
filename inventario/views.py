@@ -8,12 +8,12 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from catalogo.models import Producto
+from catalogo.models import Atributo, Categoria, Producto, ValorAtributo
 
 from . import servicios
 from .fotos import foto_panel
@@ -77,35 +77,54 @@ class LoginPanel(LoginView):
 # --------------------------------------------------------------------------
 # Stock
 # --------------------------------------------------------------------------
+def _filtros_panel():
+    """Los mismos filtros que se van generando en el catálogo público (categorías y
+    atributos como Material, Edad, Color…), construidos a partir de lo que el admin
+    crea. Solo aparecen los que tienen al menos un producto, para no mostrar
+    filtros "fantasma". Los usan Stock, Vender y Cotizar."""
+    return {
+        "f_categorias": list(
+            Categoria.objects.filter(productos__isnull=False).distinct().order_by("orden", "nombre")
+        ),
+        "f_atributos": list(
+            Atributo.objects.filter(mostrar_como_filtro=True, valores__productos__isnull=False)
+            .distinct().order_by("orden", "nombre")
+            .prefetch_related(Prefetch(
+                "valores", queryset=ValorAtributo.objects.filter(productos__isnull=False).distinct().order_by("valor")))
+        ),
+        "f_ubicaciones": list(Ubicacion.objects.filter(activa=True)),
+    }
+
+
+def _ids_valores(producto):
+    """Ids de los valores de atributo del producto, como ' 3 7 9 ' (para filtrar en el navegador)."""
+    return " " + " ".join(str(v.pk) for v in producto.atributos.all()) + " "
+
+
 @login_required
 def stock_lista(request):
+    """Todos los productos con su stock. Los filtros (texto, categoría, material, lugar…)
+    se aplican al instante en el navegador (ver panel_vista.js)."""
     ubicaciones = list(Ubicacion.objects.filter(activa=True))
-    q = request.GET.get("q", "").strip()
-    donde = request.GET.get("donde", "")
-    solo_con_stock = request.GET.get("con_stock") == "1"
-
-    productos = Producto.objects.select_related("categoria").prefetch_related("stocks", "imagenes").order_by("nombre")
-    if q:
-        productos = productos.filter(nombre__icontains=q)
-
-    filas = []
+    productos = (
+        Producto.objects.select_related("categoria").prefetch_related("stocks", "imagenes", "atributos")
+        .order_by("nombre")
+    )
     ids_ub = [u.pk for u in ubicaciones]
+    filas = []
     for p in productos:
         por_ub = {s.ubicacion_id: s.cantidad for s in p.stocks.all() if s.ubicacion_id in ids_ub}
-        total = sum(por_ub.values())
-        if solo_con_stock and total <= 0:
-            continue
-        if donde.isdigit() and por_ub.get(int(donde), 0) == 0:
-            continue
         filas.append({
-            "producto": p, "total": total, "foto": foto_panel(p),
+            "producto": p, "total": sum(por_ub.values()), "foto": foto_panel(p),
+            "valores": _ids_valores(p),
+            "precio": p.precio.quantize(Decimal("1"), rounding=ROUND_HALF_UP),
             "lugares": [{"ubicacion": u, "cantidad": por_ub.get(u.pk, 0)} for u in ubicaciones],
         })
     return render(request, "panel/stock_lista.html", {
-        "filas": filas, "ubicaciones": ubicaciones, "q": q, "donde": donde, "con_stock": solo_con_stock,
-        "total_unidades": sum(max(f["total"], 0) for f in filas),
+        "filas": filas, "ubicaciones": ubicaciones,
         # Unidades vendidas sin stock registrado (stock negativo), por cubrir
         "por_cubrir": sum(-l["cantidad"] for f in filas for l in f["lugares"] if l["cantidad"] < 0),
+        **_filtros_panel(),
     })
 
 
@@ -191,7 +210,7 @@ def _datos_productos():
     0 o negativo), para las tarjetas y el selector del formulario."""
     ubicaciones = list(Ubicacion.objects.filter(activa=True))
     ids = {u.pk for u in ubicaciones}
-    productos = Producto.objects.prefetch_related("stocks", "imagenes").order_by("nombre")
+    productos = Producto.objects.prefetch_related("stocks", "imagenes", "atributos").order_by("nombre")
     datos = []
     for p in productos:
         stock = {str(u.pk): 0 for u in ubicaciones}
@@ -200,7 +219,8 @@ def _datos_productos():
                 stock[str(s.ubicacion_id)] = s.cantidad
         datos.append({"id": p.pk, "nombre": p.nombre,
                       "precio": str(p.precio.quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
-                      "stock": stock, "total": sum(stock.values()), "foto": foto_panel(p)})
+                      "stock": stock, "total": sum(stock.values()), "foto": foto_panel(p),
+                      "categoria": str(p.categoria_id or ""), "valores": [v.pk for v in p.atributos.all()]})
     return datos, ubicaciones
 
 
@@ -213,6 +233,7 @@ def _contexto_formulario(request, tipo, previas=None, errores=None):
         "filas_json": previas or [],
         "errores": errores or [],
         "post": request.POST if request.method == "POST" else {},
+        **_filtros_panel(),
         # Al abrir el formulario las promociones vienen marcadas.
         "aplicar_reglas": request.method != "POST" or request.POST.get("aplicar_reglas") == "on",
     }

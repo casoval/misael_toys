@@ -1,0 +1,51 @@
+{# Barra de filtros compartida (Stock, Vender, Cotizar). Se aplican al instante en el navegador. #}
+<div class="p-fbar" data-filtros data-f-unidades="{{ unidades|yesno:'1,0' }}">
+  <input type="search" class="p-buscar" placeholder="Buscar producto…" data-f-q autocomplete="off">
+
+  {% if f_categorias %}
+  <div class="p-fcats" role="group" aria-label="Categoría">
+    <button type="button" class="p-fchip on" data-f-cat="">Todas</button>
+    {% for c in f_categorias %}
+    <button type="button" class="p-fchip" data-f-cat="{{ c.pk }}"><span class="categoria-punto" style="background:{{ c.color_fondo }};" aria-hidden="true"></span>{{ c.nombre }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <details class="p-fmas">
+    <summary>Más filtros <b class="p-fcuenta" data-f-cuenta hidden></b></summary>
+    <div class="p-fmas-in">
+      {% for a in f_atributos %}
+      <fieldset class="p-fgrupo" data-f-grupo="{{ a.pk }}">
+        <legend>{{ a.nombre }}</legend>
+        <div class="p-fvalores">
+          {% for v in a.valores.all %}
+          <button type="button" class="p-fchip" data-f-valor="{{ v.pk }}">
+            {% if v.color_hex %}{% if v.es_multicolor %}<span class="swatch swatch-multicolor" aria-hidden="true"></span>{% else %}<span class="swatch" style="background-color: {{ v.color_hex }};" aria-hidden="true"></span>{% endif %}{% endif %}{{ v.valor }}
+          </button>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endfor %}
+
+      <fieldset class="p-fgrupo">
+        <legend>Precio (Bs.)</legend>
+        <div class="p-fprecio">
+          <input type="number" inputmode="numeric" min="0" placeholder="Desde" data-f-pmin aria-label="Precio desde">
+          <span>–</span>
+          <input type="number" inputmode="numeric" min="0" placeholder="Hasta" data-f-pmax aria-label="Precio hasta">
+        </div>
+      </fieldset>
+
+      <fieldset class="p-fgrupo">
+        <legend>Disponibilidad</legend>
+        <select data-f-lugar aria-label="Lugar">
+          <option value="">En cualquier lugar</option>
+          {% for u in f_ubicaciones %}<option value="{{ u.pk }}">Hay en {{ u.nombre }}</option>{% endfor %}
+        </select>
+        <label class="p-check"><input type="checkbox" data-f-constock> Solo con stock</label>
+      </fieldset>
+    </div>
+  </details>
+
+  <p class="p-fresumen"><span data-f-resumen></span> <button type="button" class="p-flimpiar" data-f-limpiar hidden>Limpiar filtros</button></p>
+</div>

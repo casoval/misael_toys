@@ -43,6 +43,12 @@
     b.tabIndex = 0;
     b.dataset.id = p.id;
     b.dataset.nombre = p.nombre;
+    // Datos para los filtros (categoría, atributos, precio, stock total y por lugar)
+    b.dataset.categoria = p.categoria;
+    b.dataset.valores = " " + p.valores.join(" ") + " ";
+    b.dataset.precio = p.precio;
+    b.dataset.total = p.total;
+    idsUbic.forEach((id) => { b.dataset["u" + id] = p.stock[id]; });
     const lugares = idsUbic
       .filter((id) => p.stock[id] !== 0)
       .map((id) => "<span" + (p.stock[id] < 0 ? ' class="neg"' : "") + ">" + esc(ubic[id]) + " <b>" + p.stock[id] + "</b></span>")
