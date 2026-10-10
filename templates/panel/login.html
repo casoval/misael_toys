@@ -1,0 +1,14 @@
+{% extends "panel/base_panel.html" %}
+{% block titulo %}Entrar{% endblock %}
+{% block contenido %}
+<div class="p-card p-login">
+  <h1>Entrar al panel</h1>
+  {% if form.errors %}<div class="p-msg error">{% for e in form.non_field_errors %}{{ e }}{% empty %}Revisa tus datos.{% endfor %}</div>{% endif %}
+  <form method="post">{% csrf_token %}
+    <label>Usuario <input type="text" name="username" autofocus autocapitalize="none" autocomplete="username" required></label>
+    <label>Contraseña <input type="password" name="password" autocomplete="current-password" required></label>
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    <button class="p-btn" type="submit">Entrar</button>
+  </form>
+</div>
+{% endblock %}

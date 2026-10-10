@@ -1,0 +1,9 @@
+{% extends "panel/base_panel.html" %}
+{% load static %}
+{% block titulo %}Nueva cotización{% endblock %}
+{% block contenido %}
+<h1>Nueva cotización</h1>
+<p class="p-soft">Elige los productos y cantidades. Verás el total con las promociones y luego podrás descargar el PDF para el cliente. No descuenta stock.</p>
+{% include "panel/_form_lineas.html" %}
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/panel_form.js' %}"></script>{% endblock %}

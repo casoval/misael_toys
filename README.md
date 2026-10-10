@@ -44,6 +44,37 @@ Proyecto **totalmente independiente** del sistema del centro de terapias
   una mano adulta"). Se cargan en *Productos → Medidas*, se muestran en la ficha
   y un resumen corto aparece en la tarjeta del catálogo.
 
+## Panel interno: inventario, ventas y cotizaciones (`/panel/`)
+
+Módulo **privado** (requiere login, `noindex`, fuera del sitemap). El catálogo
+público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`.
+
+- **Stock por lugar**: cada producto tiene su cantidad en cada ubicación
+  (crea tus lugares en *Admin → Ubicaciones*). Todos los usuarios ven cuántos
+  hay y dónde. El admin puede **agregar** stock (la primera vez en un lugar queda
+  como «cantidad inicial»), **trasladar** entre lugares y **corregir** tras un
+  conteo. Todo queda en un historial (quién, cuándo, por qué).
+- **Ventas**: el vendedor elige producto, de qué lugar sale, cantidad y precio
+  (se llena con el de lista pero es editable). Descuenta el stock de ese lugar y
+  no deja vender más de lo que hay. Se guarda quién vendió y a qué precio. Solo el
+  admin puede **anular** una venta (el stock vuelve solo).
+- **Descuentos / promociones** (*Admin → Reglas de descuento*): ya vienen las dos
+  reglas actuales (5+ productos → 5 %, 10+ → 10 %). Puedes crear más: por
+  categoría, por producto, con fechas de vigencia, acumulables o no. Las reglas
+  no acumulables no se suman: se aplica solo la que más descuenta. Además cada
+  venta/cotización admite un descuento adicional manual en Bs.
+- **Cotizaciones**: eliges productos y cantidades, ves el total con las
+  promociones aplicadas y descargas un **PDF** para el cliente (sin stock ni
+  lugares). No descuenta stock.
+- **Usuarios** (solo admin, `/panel/usuarios/`): crear vendedor = usuario +
+  contraseña, sin restricciones de formato ni de largo. Se puede cambiar la
+  contraseña y desactivar. Los vendedores no entran a `/admin/`. Como las
+  contraseñas no se validan, el login se bloquea 10 min tras 8 intentos fallidos.
+
+Después de actualizar: `pip install -r requirements.txt` y `python manage.py migrate`.
+Quién es «administrador» del panel: cualquier usuario con `is_staff` (tu superusuario).
+Tests: `python manage.py test`.
+
 ## Cómo correrlo en local
 
 ```bash

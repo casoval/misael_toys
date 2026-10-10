@@ -1,0 +1,35 @@
+{% extends "panel/base_panel.html" %}
+{% block titulo %}Venta #{{ venta.pk }}{% endblock %}
+{% block contenido %}
+<p><a href="{% url 'panel:ventas' %}">← Volver a ventas</a></p>
+<h1>Venta #{{ venta.pk }} {% if venta.anulada %}<span class="p-tag">ANULADA</span>{% endif %}</h1>
+<p class="p-soft">{{ venta.creado|date:"d/m/Y H:i" }} · Vendió: <b>{{ venta.vendedor.username|default:"—" }}</b>{% if venta.cliente %} · Cliente: {{ venta.cliente }}{% endif %}</p>
+
+<div class="p-card">
+  {% for it in items %}
+  <div class="p-linea">
+    <b>{{ it.cantidad }} × {{ it.producto.nombre }}</b>
+    <span>Bs. {{ it.precio_unitario }} c/u {% if it.precio_unitario != it.precio_lista %}<small class="p-soft">(lista: {{ it.precio_lista }})</small>{% endif %}</span>
+    <span class="p-soft">salió de {{ it.ubicacion }}</span>
+    <b>Bs. {{ it.subtotal }}</b>
+    {% if it.bajo_costo %}<span class="p-tag warn">bajo el costo</span>{% endif %}
+  </div>
+  {% endfor %}
+  <div class="p-resumen">
+    <div class="fila"><span>Subtotal</span><b>Bs. {{ venta.subtotal }}</b></div>
+    {% for linea in venta.detalle_reglas.splitlines %}<div class="fila desc"><span>🏷 {{ linea }}</span></div>{% endfor %}
+    {% if venta.descuento_extra %}<div class="fila desc"><span>Descuento adicional</span><b>− Bs. {{ venta.descuento_extra }}</b></div>{% endif %}
+    <div class="fila total"><span>Total</span><b>Bs. {{ venta.total }}</b></div>
+  </div>
+  {% if venta.observaciones %}<p><b>Observaciones:</b> {{ venta.observaciones|linebreaksbr }}</p>{% endif %}
+  {% if venta.anulada %}<p class="p-soft">Anulada por {{ venta.anulada_por.username|default:"—" }} el {{ venta.anulada_en|date:"d/m/Y H:i" }}{% if venta.motivo_anulacion %} — {{ venta.motivo_anulacion }}{% endif %}</p>{% endif %}
+</div>
+
+{% if user.is_staff and not venta.anulada %}
+<form class="p-card" method="post" action="{% url 'panel:venta_anular' venta.pk %}" onsubmit="return confirm('¿Anular esta venta? El stock volverá a los lugares de donde salió.');">{% csrf_token %}
+  <h2>Anular venta</h2>
+  <label>Motivo <input type="text" name="motivo" maxlength="250"></label>
+  <button class="p-btn p-btn-peligro" type="submit">Anular y devolver stock</button>
+</form>
+{% endif %}
+{% endblock %}

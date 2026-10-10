@@ -1,0 +1,33 @@
+{% extends "panel/base_panel.html" %}
+{% block titulo %}Usuarios{% endblock %}
+{% block contenido %}
+<h1>Usuarios</h1>
+<form class="p-card" method="post">{% csrf_token %}
+  <h2>Crear usuario vendedor</h2>
+  <p class="p-soft">Solo usuario y contraseña, sin restricciones de formato. Los vendedores ven el stock, venden, cotizan y ven sus propias ventas.</p>
+  <div class="p-dos">
+    <label>Usuario <input type="text" name="username" maxlength="150" autocapitalize="none" autocomplete="off" required></label>
+    <label>Contraseña <input type="text" name="password" autocomplete="off" required></label>
+  </div>
+  <button class="p-btn" type="submit">Crear</button>
+</form>
+
+<div class="p-card">
+  <h2>Usuarios existentes</h2>
+  {% for u in usuarios %}
+  <div class="p-usuario {% if not u.is_active %}inactivo{% endif %}">
+    <div><b>{{ u.username }}</b> {% if u.is_staff %}<span class="p-tag">admin</span>{% endif %}{% if not u.is_active %}<span class="p-tag warn">desactivado</span>{% endif %}<br>
+      <span class="p-soft">{{ u.n_ventas }} venta{{ u.n_ventas|pluralize }} · último ingreso: {{ u.last_login|date:"d/m/Y H:i"|default:"nunca" }}</span></div>
+    <form method="post" action="{% url 'panel:usuario_clave' u.pk %}" class="p-inline">{% csrf_token %}
+      <input type="text" name="password" placeholder="Nueva contraseña" autocomplete="off" required>
+      <button class="p-btn p-btn-sec" type="submit">Cambiar</button>
+    </form>
+    {% if u != user %}
+    <form method="post" action="{% url 'panel:usuario_activar' u.pk %}">{% csrf_token %}
+      <button class="p-btn p-btn-sec" type="submit">{% if u.is_active %}Desactivar{% else %}Activar{% endif %}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

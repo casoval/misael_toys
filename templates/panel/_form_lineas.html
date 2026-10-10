@@ -1,0 +1,49 @@
+{# Formulario compartido de venta y cotización. `tipo` = "venta" | "cotizacion" #}
+{% if errores %}<div class="p-msg error"><ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+
+<form id="form-lineas" method="post" data-tipo="{{ tipo }}"
+      hx-post="{% url 'panel:calcular' %}" hx-trigger="input delay:300ms, change, load" hx-target="#resumen" hx-swap="innerHTML">
+  {% csrf_token %}
+
+  <div class="p-card">
+    <h2>Productos</h2>
+    <div id="filas"></div>
+    <button type="button" id="agregar-fila" class="p-btn p-btn-sec">+ Agregar otro producto</button>
+  </div>
+
+  <div class="p-card">
+    <h2>Descuentos</h2>
+    <label class="p-check"><input type="checkbox" name="aplicar_reglas" {% if aplicar_reglas %}checked{% endif %}>
+      Aplicar promociones por cantidad automáticamente</label>
+    <label>Descuento adicional (Bs.) <small class="p-soft">opcional</small>
+      <input type="text" name="descuento_extra" inputmode="decimal" value="{{ post.descuento_extra }}" placeholder="0"></label>
+  </div>
+
+  <div class="p-card">
+    <h2>Datos</h2>
+    <label>Cliente <small class="p-soft">opcional</small> <input type="text" name="cliente" maxlength="120" value="{{ post.cliente }}"></label>
+    {% if tipo == "cotizacion" %}
+    <label>Válida por (días) <input type="number" name="validez_dias" min="1" value="{{ post.validez_dias|default:'7' }}" inputmode="numeric"></label>
+    {% endif %}
+    <label>Observaciones <textarea name="observaciones" rows="2">{{ post.observaciones }}</textarea></label>
+  </div>
+
+  <div class="p-card p-sticky">
+    <div id="resumen"></div>
+    <button class="p-btn p-btn-grande" type="submit">{% if tipo == "venta" %}Registrar venta{% else %}Crear cotización{% endif %}</button>
+  </div>
+</form>
+
+<template id="tpl-fila">
+  <div class="p-fila-form">
+    <label class="f-prod">Producto <select name="producto"></select></label>
+    {% if tipo == "venta" %}<label class="f-ubic">De dónde sale <select name="ubicacion"></select></label>{% endif %}
+    <label class="f-cant">Cant. <input type="number" name="cantidad" min="1" value="1" inputmode="numeric"></label>
+    <label class="f-precio">Precio c/u (Bs.) <input type="text" name="precio" inputmode="decimal"></label>
+    <button type="button" class="p-quitar" title="Quitar" aria-label="Quitar fila">✕</button>
+  </div>
+</template>
+
+{{ productos_json|json_script:"datos-productos" }}
+{{ ubicaciones_json|json_script:"datos-ubicaciones" }}
+{{ filas_json|json_script:"filas-previas" }}

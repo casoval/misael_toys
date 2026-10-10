@@ -1,0 +1,9 @@
+{% extends "panel/base_panel.html" %}
+{% load static %}
+{% block titulo %}Nueva venta{% endblock %}
+{% block contenido %}
+<h1>Nueva venta</h1>
+<p class="p-soft">Elige el producto y de qué lugar sale. El precio se llena solo, pero puedes cambiarlo si se vendió a otro precio.</p>
+{% include "panel/_form_lineas.html" %}
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/panel_form.js' %}"></script>{% endblock %}

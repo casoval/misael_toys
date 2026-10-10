@@ -8,6 +8,8 @@ from django.contrib.sitemaps.views import sitemap
 from catalogo.sitemaps import InicioSitemap, CategoriaSitemap, ProductoSitemap
 from django.http import HttpResponse
 
+handler404 = 'catalogo.views.error_404'
+
 sitemaps = {"inicio": InicioSitemap, "categorias": CategoriaSitemap, "productos": ProductoSitemap}
 
 urlpatterns = [
@@ -18,6 +20,7 @@ urlpatterns = [
     path('googleef643350cb747fe0.html',
          lambda request: HttpResponse('google-site-verification: googleef643350cb747fe0.html',
                                       content_type='text/html')),
+    path('panel/', include('inventario.urls', namespace='panel')),
     path('', include('catalogo.urls', namespace='catalogo')),
 ]
 

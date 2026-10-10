@@ -231,3 +231,13 @@ def toggle_like(request, slug):
     contexto = {"producto": producto, "ya_dio_like": ya_dio_like}
     response = render(request, "catalogo/_boton_like.html", contexto)
     return _setear_cookie_visitante_si_falta(response, visitante_id, es_nuevo)
+
+
+def error_404(request, exception=None):
+    """Página 404 propia. base.html espera `seo` y `config`; el handler por
+    defecto de Django no los pasa y con DEBUG=False eso rompía con un 500."""
+    contexto = {
+        "seo": {"title": "Página no encontrada — Misael Toys", "og_title": "Misael Toys", "robots": "noindex"},
+        "config": ConfiguracionSitio.get(),
+    }
+    return render(request, "404.html", contexto, status=404)

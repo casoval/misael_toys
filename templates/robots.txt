@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /admin/
+Disallow: /panel/
 Disallow: /*?q=
 Disallow: /*&q=
 Disallow: /*precio_min=

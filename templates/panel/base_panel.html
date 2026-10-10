@@ -1,0 +1,43 @@
+{% load static %}<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block titulo %}Panel{% endblock %} · Misael Toys</title>
+  <link rel="icon" type="image/png" href="{% static 'img/favicon.png' %}">
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <link rel="stylesheet" href="{% static 'css/panel.css' %}">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="panel">
+  <header class="p-top">
+    <div class="p-top-in">
+      <a class="p-marca" href="{% url 'panel:stock' %}">Misael Toys <small>panel</small></a>
+      {% if user.is_authenticated %}
+      {% with u=request.resolver_match.url_name %}
+      <nav class="p-nav">
+        <a href="{% url 'panel:stock' %}" {% if u == 'stock' or u == 'stock_producto' %}class="on"{% endif %}>Stock</a>
+        <a href="{% url 'panel:venta_nueva' %}" {% if u == 'venta_nueva' %}class="on"{% endif %}>Vender</a>
+        <a href="{% url 'panel:ventas' %}" {% if u == 'ventas' or u == 'venta_detalle' %}class="on"{% endif %}>Ventas</a>
+        <a href="{% url 'panel:cotizacion_nueva' %}" {% if u == 'cotizacion_nueva' %}class="on"{% endif %}>Cotizar</a>
+        <a href="{% url 'panel:cotizaciones' %}" {% if u == 'cotizaciones' or u == 'cotizacion_detalle' %}class="on"{% endif %}>Cotizaciones</a>
+        {% if user.is_staff %}<a href="{% url 'panel:usuarios' %}" {% if u == 'usuarios' %}class="on"{% endif %}>Usuarios</a>{% endif %}
+      </nav>
+      {% endwith %}
+      <form method="post" action="{% url 'panel:logout' %}" class="p-salir">{% csrf_token %}
+        <span>{{ user.username }}</span>
+        {% if user.is_staff %}<a href="/admin/">Admin</a>{% endif %}
+        <button type="submit">Salir</button>
+      </form>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="p-main">
+    {% for m in messages %}<div class="p-msg {{ m.tags }}">{{ m }}</div>{% endfor %}
+    {% block contenido %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

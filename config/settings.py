@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'cloudinary',
 
     'catalogo',
+    'inventario',
 ]
 
 MIDDLEWARE = [
@@ -107,20 +108,16 @@ else:
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
-]
+# Sin validadores a propósito: el admin crea usuarios del panel de ventas con
+# contraseñas simples y sin límite de caracteres. La protección contra
+# adivinar contraseñas es el bloqueo por intentos fallidos de /panel/login/
+# (ver inventario/views.py).
+AUTH_PASSWORD_VALIDATORS = []
+
+# Panel interno de inventario y ventas
+LOGIN_URL = '/panel/login/'
+LOGIN_REDIRECT_URL = '/panel/'
+LOGOUT_REDIRECT_URL = '/panel/login/'
 
 
 # Internationalization

@@ -1,0 +1,9 @@
+<div class="p-resumen">
+  <div class="fila"><span>Subtotal ({{ t.unidades }} unidad{{ t.unidades|pluralize:"es" }})</span><b>Bs. {{ t.subtotal }}</b></div>
+  {% for a in t.aplicadas %}
+  <div class="fila desc"><span>🏷 {{ a.nombre }} ({{ a.porcentaje|floatformat:"-2" }}%)</span><b>− Bs. {{ a.monto }}</b></div>
+  {% endfor %}
+  {% if t.descuento_extra %}<div class="fila desc"><span>Descuento adicional</span><b>− Bs. {{ t.descuento_extra }}</b></div>{% endif %}
+  <div class="fila total"><span>Total</span><b>Bs. {{ t.total }}</b></div>
+  {% if t.sugerencia %}<p class="sug">💡 {{ t.sugerencia }}</p>{% endif %}
+</div>

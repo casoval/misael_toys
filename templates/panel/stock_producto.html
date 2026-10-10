@@ -1,0 +1,64 @@
+{% extends "panel/base_panel.html" %}
+{% block titulo %}{{ producto.nombre }}{% endblock %}
+{% block contenido %}
+<p><a href="{% url 'panel:stock' %}">← Volver al stock</a></p>
+<h1>{{ producto.nombre }}</h1>
+<p class="p-soft">Precio de lista: <b>Bs. {{ producto.precio }}</b>{% if producto.categoria %} · {{ producto.categoria }}{% endif %}</p>
+
+<div class="p-card">
+  <h2>Dónde está ({{ total }} en total)</h2>
+  <div class="p-chips grande">
+    {% for l in lugares %}<span class="p-chip {% if l.cantidad == 0 %}cero{% endif %}">{{ l.ubicacion.nombre }}: <b>{{ l.cantidad }}</b></span>{% endfor %}
+  </div>
+</div>
+
+{% if user.is_staff %}
+<div class="p-grid3">
+  <form class="p-card" method="post" action="{% url 'panel:stock_ingreso' producto.pk %}">{% csrf_token %}
+    <h2>Agregar stock</h2>
+    <p class="p-soft">La primera vez en un lugar queda como «cantidad inicial».</p>
+    <label>Lugar <select name="ubicacion" required>{% for u in ubicaciones %}<option value="{{ u.pk }}">{{ u.nombre }}</option>{% endfor %}</select></label>
+    <label>Cantidad <input type="number" name="cantidad" min="1" inputmode="numeric" required></label>
+    <label>Nota (opcional) <input type="text" name="nota" maxlength="250"></label>
+    <button class="p-btn" type="submit">Agregar</button>
+  </form>
+  <form class="p-card" method="post" action="{% url 'panel:stock_traslado' producto.pk %}">{% csrf_token %}
+    <h2>Trasladar</h2>
+    <p class="p-soft">Mueve unidades de un lugar a otro.</p>
+    <label>Desde <select name="origen" required>{% for l in lugares %}<option value="{{ l.ubicacion.pk }}">{{ l.ubicacion.nombre }} ({{ l.cantidad }})</option>{% endfor %}</select></label>
+    <label>Hacia <select name="destino" required>{% for u in ubicaciones %}<option value="{{ u.pk }}">{{ u.nombre }}</option>{% endfor %}</select></label>
+    <label>Cantidad <input type="number" name="cantidad" min="1" inputmode="numeric" required></label>
+    <button class="p-btn" type="submit">Trasladar</button>
+  </form>
+  <form class="p-card" method="post" action="{% url 'panel:stock_ajuste' producto.pk %}">{% csrf_token %}
+    <h2>Corregir cantidad</h2>
+    <p class="p-soft">Si al contar no coincide (rotura, pérdida…). Escribe lo que hay realmente.</p>
+    <label>Lugar <select name="ubicacion" required>{% for l in lugares %}<option value="{{ l.ubicacion.pk }}">{{ l.ubicacion.nombre }} (ahora {{ l.cantidad }})</option>{% endfor %}</select></label>
+    <label>Cantidad real <input type="number" name="cantidad" min="0" inputmode="numeric" required></label>
+    <label>Motivo <input type="text" name="nota" maxlength="250"></label>
+    <button class="p-btn p-btn-sec" type="submit">Corregir</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="p-card">
+  <h2>Últimas ventas de este producto</h2>
+  {% for it in ventas_recientes %}
+  <div class="p-linea"><a href="{% url 'panel:venta_detalle' it.venta.pk %}">#{{ it.venta.pk }}</a>
+    <span>{{ it.venta.creado|date:"d/m/Y H:i" }}</span>
+    <span>{{ it.venta.vendedor.username|default:"—" }}</span>
+    <span>{{ it.cantidad }} × Bs. {{ it.precio_unitario }}</span>
+    <span class="p-soft">{{ it.ubicacion }}</span></div>
+  {% empty %}<p class="p-soft">Aún no se vendió.</p>{% endfor %}
+</div>
+
+<div class="p-card">
+  <h2>Historial de movimientos</h2>
+  {% for m in movimientos %}
+  <div class="p-linea"><span>{{ m.creado|date:"d/m/Y H:i" }}</span>
+    <b class="{% if m.cantidad > 0 %}pos{% else %}neg{% endif %}">{{ m.cantidad|stringformat:"+d" }}</b>
+    <span>{{ m.get_tipo_display }}</span><span>{{ m.ubicacion }}</span>
+    <span class="p-soft">{{ m.usuario.username|default:"—" }}{% if m.nota %} · {{ m.nota }}{% endif %}</span></div>
+  {% empty %}<p class="p-soft">Sin movimientos todavía.</p>{% endfor %}
+</div>
+{% endblock %}

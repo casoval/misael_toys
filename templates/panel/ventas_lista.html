@@ -1,0 +1,38 @@
+{% extends "panel/base_panel.html" %}
+{% block titulo %}Ventas{% endblock %}
+{% block contenido %}
+<h1>{% if user.is_staff %}Ventas{% else %}Mis ventas{% endif %}</h1>
+<form class="p-filtros" method="get">
+  {% if user.is_staff %}
+  <select name="vendedor"><option value="">Todos los vendedores</option>
+    {% for v in vendedores %}<option value="{{ v.pk }}" {% if f.vendedor == v.pk|stringformat:"s" %}selected{% endif %}>{{ v.username }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  <label>Desde <input type="date" name="desde" value="{{ f.desde }}"></label>
+  <label>Hasta <input type="date" name="hasta" value="{{ f.hasta }}"></label>
+  <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
+</form>
+
+<div class="p-kpis">
+  <div><span class="p-soft">Ventas</span><b>{{ resumen.n }}</b></div>
+  <div><span class="p-soft">Unidades</span><b>{{ unidades }}</b></div>
+  <div><span class="p-soft">Total vendido</span><b>Bs. {{ resumen.total|default:"0" }}</b></div>
+</div>
+
+{% if por_vendedor %}
+<div class="p-card"><h2>Por vendedor</h2>
+  {% for v in por_vendedor %}<div class="p-linea"><b>{{ v.vendedor__username|default:"(usuario eliminado)" }}</b><span>{{ v.n }} venta{{ v.n|pluralize }}</span><span>Bs. {{ v.total }}</span></div>{% endfor %}
+</div>
+{% endif %}
+
+<div class="p-lista">
+{% for v in ventas %}
+  <a class="p-fila-venta {% if v.anulada %}anulada{% endif %}" href="{% url 'panel:venta_detalle' v.pk %}">
+    <div><strong>#{{ v.pk }}</strong> <span class="p-soft">{{ v.creado|date:"d/m/Y H:i" }}</span>
+      {% if v.anulada %}<span class="p-tag">ANULADA</span>{% endif %}<br>
+      <span class="p-soft">{{ v.vendedor.username|default:"—" }}{% if v.cliente %} → {{ v.cliente }}{% endif %} · {{ v.unidades }} unid.</span></div>
+    <div class="p-monto">Bs. {{ v.total }}</div>
+  </a>
+{% empty %}<p class="p-soft">No hay ventas con esos filtros.</p>{% endfor %}
+</div>
+{% endblock %}
