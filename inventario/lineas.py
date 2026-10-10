@@ -1,5 +1,5 @@
 """Lectura de las filas de producto que llegan del formulario de venta/cotización."""
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from catalogo.models import Producto
 
@@ -11,11 +11,12 @@ def _decimal(texto):
         d = Decimal(str(texto).strip().replace(",", "."))
     except (InvalidOperation, ValueError):
         return None
-    return d if d.is_finite() and d >= 0 else None
+    return d.quantize(Decimal("1"), rounding=ROUND_HALF_UP) if d.is_finite() and d >= 0 else None
 
 
 def leer_decimal(texto, defecto=Decimal("0")):
-    """Para campos opcionales (ej. descuento extra): vacío o inválido = defecto."""
+    """Para campos opcionales (ej. descuento extra): vacío o inválido = defecto.
+    El resultado siempre es un entero (sin decimales)."""
     if not str(texto or "").strip():
         return defecto
     d = _decimal(texto)
@@ -61,12 +62,13 @@ def leer_lineas(post, con_ubicacion, estricto=True):
                 errores.append(f"Fila {n} ({producto.nombre}): precio no válido.")
                 continue
         else:
-            precio = producto.precio
+            precio = producto.precio.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         ubicacion = None
-        if con_ubicacion:
+        if con_ubicacion and ub_txt.strip():
+            # Vacío = "no descontar de ningún lugar" (válido). Si viene un lugar, debe existir.
             ubicacion = ubs.get(int(ub_txt)) if ub_txt.isdigit() else None
             if ubicacion is None:
-                errores.append(f"Fila {n} ({producto.nombre}): elige de qué lugar sale.")
+                errores.append(f"Fila {n} ({producto.nombre}): el lugar elegido no es válido.")
                 continue
         lineas.append({"producto": producto, "ubicacion": ubicacion, "cantidad": cantidad, "precio_unitario": precio})
     return lineas, (errores if estricto else []), previas

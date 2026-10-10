@@ -1,9 +1,10 @@
 {% extends "panel/base_panel.html" %}
+{% load static %}
 {% block titulo %}Stock{% endblock %}
 {% block contenido %}
 <h1>Stock</h1>
 <form class="p-filtros" method="get">
-  <input type="search" name="q" placeholder="Buscar producto…" value="{{ q }}">
+  <input type="search" name="q" placeholder="Buscar producto…" value="{{ q }}" data-filtro autocomplete="off">
   <select name="donde">
     <option value="">Todos los lugares</option>
     {% for u in ubicaciones %}<option value="{{ u.pk }}" {% if donde == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
@@ -11,27 +12,37 @@
   <label class="p-check"><input type="checkbox" name="con_stock" value="1" {% if con_stock %}checked{% endif %}> Solo con stock</label>
   <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
 </form>
-<p class="p-soft">{{ filas|length }} producto{{ filas|length|pluralize }} · {{ total_unidades }} unidades en total</p>
 
 {% if not ubicaciones %}
 <div class="p-msg warning">Todavía no hay lugares. Créalos en <a href="/admin/inventario/ubicacion/">Admin → Ubicaciones</a>.</div>
 {% endif %}
 
-<div class="p-lista">
+{% if por_cubrir %}
+<div class="p-msg warning">⚠ Hay <b>{{ por_cubrir }}</b> unidad{{ por_cubrir|pluralize:"es" }} vendida{{ por_cubrir|pluralize }} sin stock registrado (aparecen en rojo, con número negativo). Se compensan solas cuando agregues el stock, o corrígelas si el producto ya estaba físicamente.</div>
+{% endif %}
+
+<div class="p-vistabar">
+  <p class="p-soft">{{ filas|length }} producto{{ filas|length|pluralize }} · {{ total_unidades }} unidades en total</p>
+  {% include "panel/_toggle_vista.html" %}
+</div>
+
+<div class="p-productos vista-tarjetas" data-vista-contenedor>
 {% for f in filas %}
-  <a class="p-fila-stock" href="{% url 'panel:stock_producto' f.producto.pk %}">
-    {% if f.producto.imagen_principal_miniatura %}<img src="{{ f.producto.imagen_principal_miniatura }}" alt="" loading="lazy">{% else %}<span class="p-sinfoto"></span>{% endif %}
-    <div class="p-fila-info">
-      <strong>{{ f.producto.nombre }}</strong>
-      <span class="p-soft">Bs. {{ f.producto.precio }}{% if f.producto.categoria %} · {{ f.producto.categoria }}{% endif %}</span>
-      <div class="p-chips">
-        {% for l in f.lugares %}<span class="p-chip {% if l.cantidad == 0 %}cero{% endif %}">{{ l.ubicacion.nombre }}: <b>{{ l.cantidad }}</b></span>{% endfor %}
-      </div>
-    </div>
-    <div class="p-total {% if f.total == 0 %}agotado{% endif %}">{% if f.total == 0 %}Agotado{% else %}{{ f.total }}{% endif %}</div>
+  <a class="p-prod {% if f.total <= 0 %}agotado{% endif %}" href="{% url 'panel:stock_producto' f.producto.pk %}" data-nombre="{{ f.producto.nombre }}">
+    <span class="p-prod-foto">{% if f.foto %}<img src="{{ f.foto }}" alt="" loading="lazy">{% else %}<i class="p-sinfoto"></i>{% endif %}</span>
+    <b class="p-badge {% if f.total <= 0 %}cero{% endif %}">{{ f.total }}</b>
+    <span class="p-prod-cuerpo">
+      <span class="p-prod-nombre">{{ f.producto.nombre }}</span>
+      <span class="p-prod-precio">Bs. {{ f.producto.precio|floatformat:0 }}</span>
+      <span class="p-prod-lugares">
+        {% for l in f.lugares %}{% if l.cantidad %}<span {% if l.cantidad < 0 %}class="neg"{% endif %}>{{ l.ubicacion.nombre }} <b>{{ l.cantidad }}</b></span>{% endif %}{% endfor %}
+        {% if f.total == 0 %}<span class="sin">Agotado</span>{% endif %}
+      </span>
+    </span>
   </a>
 {% empty %}
   <p class="p-soft">No hay productos con esos filtros.</p>
 {% endfor %}
 </div>
 {% endblock %}
+{% block scripts %}<script src="{% static 'js/panel_vista.js' %}"></script>{% endblock %}

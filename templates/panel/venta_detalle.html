@@ -5,22 +5,26 @@
 <h1>Venta #{{ venta.pk }} {% if venta.anulada %}<span class="p-tag">ANULADA</span>{% endif %}</h1>
 <p class="p-soft">{{ venta.creado|date:"d/m/Y H:i" }} · Vendió: <b>{{ venta.vendedor.username|default:"—" }}</b>{% if venta.cliente %} · Cliente: {{ venta.cliente }}{% endif %}</p>
 
+<p><a class="p-btn p-btn-sec" href="{% url 'panel:venta_recibo' venta.pk %}" target="_blank" rel="noopener">Abrir recibo de respaldo (PDF)</a></p>
+
 <div class="p-card">
   {% for it in items %}
   <div class="p-linea">
     <b>{{ it.cantidad }} × {{ it.producto.nombre }}</b>
-    <span>Bs. {{ it.precio_unitario }} c/u {% if it.precio_unitario != it.precio_lista %}<small class="p-soft">(lista: {{ it.precio_lista }})</small>{% endif %}</span>
-    <span class="p-soft">salió de {{ it.ubicacion }}</span>
-    <b>Bs. {{ it.subtotal }}</b>
+    <span>Bs. {{ it.precio_unitario|floatformat:0 }} c/u {% if it.precio_unitario != it.precio_lista %}<small class="p-soft">(lista: {{ it.precio_lista|floatformat:0 }})</small>{% endif %}</span>
+    <span class="p-soft">{% if it.ubicacion %}salió de {{ it.ubicacion }}{% else %}sin descontar de ningún lugar{% endif %}</span>
+    {% if it.faltante %}<span class="p-tag warn">sin stock: {{ it.faltante }}</span>{% endif %}
+    <b>Bs. {{ it.subtotal|floatformat:0 }}</b>
     {% if it.bajo_costo %}<span class="p-tag warn">bajo el costo</span>{% endif %}
   </div>
   {% endfor %}
   <div class="p-resumen">
-    <div class="fila"><span>Subtotal</span><b>Bs. {{ venta.subtotal }}</b></div>
+    <div class="fila"><span>Subtotal</span><b>Bs. {{ venta.subtotal|floatformat:0 }}</b></div>
     {% for linea in venta.detalle_reglas.splitlines %}<div class="fila desc"><span>🏷 {{ linea }}</span></div>{% endfor %}
-    {% if venta.descuento_extra %}<div class="fila desc"><span>Descuento adicional</span><b>− Bs. {{ venta.descuento_extra }}</b></div>{% endif %}
-    <div class="fila total"><span>Total</span><b>Bs. {{ venta.total }}</b></div>
+    {% if venta.descuento_extra %}<div class="fila desc"><span>Descuento adicional</span><b>− Bs. {{ venta.descuento_extra|floatformat:0 }}</b></div>{% endif %}
+    <div class="fila total"><span>Total</span><b>Bs. {{ venta.total|floatformat:0 }}</b></div>
   </div>
+  {% if venta.tiene_faltante and not venta.anulada %}<p class="p-soft" style="color:#b36b00">⚠ Parte de esta venta se hizo sin stock registrado. El stock de ese lugar quedó en negativo hasta que se agregue o se corrija.</p>{% endif %}
   {% if venta.observaciones %}<p><b>Observaciones:</b> {{ venta.observaciones|linebreaksbr }}</p>{% endif %}
   {% if venta.anulada %}<p class="p-soft">Anulada por {{ venta.anulada_por.username|default:"—" }} el {{ venta.anulada_en|date:"d/m/Y H:i" }}{% if venta.motivo_anulacion %} — {{ venta.motivo_anulacion }}{% endif %}</p>{% endif %}
 </div>

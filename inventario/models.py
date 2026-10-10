@@ -36,7 +36,10 @@ class Stock(models.Model):
 
     producto = models.ForeignKey(Producto, on_delete=models.CASCADE, related_name="stocks")
     ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT, related_name="stocks")
-    cantidad = models.PositiveIntegerField(default=0)
+    # Puede ser negativo: significa "se vendió sin stock registrado" (producto que
+    # existía pero no estaba contado, o que se fabrica para entregar después).
+    # Al agregar stock nuevo, se compensa solo.
+    cantidad = models.IntegerField(default=0)
 
     class Meta:
         verbose_name = "Stock"
@@ -170,6 +173,10 @@ class Venta(models.Model):
         return sum(i.cantidad for i in self.items.all())
 
     @property
+    def tiene_faltante(self):
+        return any(i.faltante for i in self.items.all())
+
+    @property
     def descuento_total(self):
         return self.descuento_reglas + self.descuento_extra
 
@@ -177,8 +184,11 @@ class Venta(models.Model):
 class VentaItem(models.Model):
     venta = models.ForeignKey(Venta, on_delete=models.CASCADE, related_name="items")
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name="ventas_items")
-    ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT, related_name="+")
+    # Nulo = no se descontó de ningún lugar (venta sin control de stock).
+    ubicacion = models.ForeignKey(Ubicacion, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     cantidad = models.PositiveIntegerField()
+    faltante = models.PositiveIntegerField(
+        default=0, help_text="Unidades que se vendieron aunque no había stock registrado suficiente")
     precio_lista = models.DecimalField(**DINERO, help_text="Precio del catálogo al momento de vender")
     precio_unitario = models.DecimalField(**DINERO, help_text="Precio realmente cobrado")
 

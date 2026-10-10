@@ -3,13 +3,14 @@
 {% block contenido %}
 <p><a href="{% url 'panel:stock' %}">← Volver al stock</a></p>
 <h1>{{ producto.nombre }}</h1>
-<p class="p-soft">Precio de lista: <b>Bs. {{ producto.precio }}</b>{% if producto.categoria %} · {{ producto.categoria }}{% endif %}</p>
+<p class="p-soft">Precio de lista: <b>Bs. {{ producto.precio|floatformat:0 }}</b>{% if producto.categoria %} · {{ producto.categoria }}{% endif %}</p>
 
 <div class="p-card">
   <h2>Dónde está ({{ total }} en total)</h2>
   <div class="p-chips grande">
-    {% for l in lugares %}<span class="p-chip {% if l.cantidad == 0 %}cero{% endif %}">{{ l.ubicacion.nombre }}: <b>{{ l.cantidad }}</b></span>{% endfor %}
+    {% for l in lugares %}<span class="p-chip {% if l.cantidad == 0 %}cero{% elif l.cantidad < 0 %}neg{% endif %}">{{ l.ubicacion.nombre }}: <b>{{ l.cantidad }}</b></span>{% endfor %}
   </div>
+  {% if por_cubrir %}<p class="p-soft" style="color:#b36b00;margin-top:.6rem">⚠ Se vendieron {{ por_cubrir }} unidad{{ por_cubrir|pluralize:"es" }} sin stock registrado (en rojo). Al «Agregar stock» en ese lugar se compensan solas; si el producto ya existía físicamente, usa «Corregir cantidad».</p>{% endif %}
 </div>
 
 {% if user.is_staff %}
@@ -47,8 +48,8 @@
   <div class="p-linea"><a href="{% url 'panel:venta_detalle' it.venta.pk %}">#{{ it.venta.pk }}</a>
     <span>{{ it.venta.creado|date:"d/m/Y H:i" }}</span>
     <span>{{ it.venta.vendedor.username|default:"—" }}</span>
-    <span>{{ it.cantidad }} × Bs. {{ it.precio_unitario }}</span>
-    <span class="p-soft">{{ it.ubicacion }}</span></div>
+    <span>{{ it.cantidad }} × Bs. {{ it.precio_unitario|floatformat:0 }}</span>
+    <span class="p-soft">{{ it.ubicacion|default:"sin descontar" }}</span>{% if it.faltante %}<span class="p-tag warn">sin stock: {{ it.faltante }}</span>{% endif %}</div>
   {% empty %}<p class="p-soft">Aún no se vendió.</p>{% endfor %}
 </div>
 

@@ -54,15 +54,33 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   hay y dónde. El admin puede **agregar** stock (la primera vez en un lugar queda
   como «cantidad inicial»), **trasladar** entre lugares y **corregir** tras un
   conteo. Todo queda en un historial (quién, cuándo, por qué).
-- **Ventas**: el vendedor elige producto, de qué lugar sale, cantidad y precio
-  (se llena con el de lista pero es editable). Descuenta el stock de ese lugar y
-  no deja vender más de lo que hay. Se guarda quién vendió y a qué precio. Solo el
+- **Ventas**: el vendedor toca la foto del producto (otra vez para sumar, botón «−»
+  para quitar), elige de qué lugar sale y el precio (se llena con el de lista pero
+  es editable). **Nunca se bloquea una venta por falta de stock**: si el producto
+  existe pero no estaba registrado, o se fabrica para entregar después, la venta
+  se hace igual y el stock de ese lugar queda en **negativo** (= unidades por
+  cubrir, en rojo). Al agregar stock nuevo se compensa solo; si el producto ya
+  estaba físicamente, se corrige con «Corregir cantidad». También se puede vender
+  sin descontar de ningún lugar. Se guarda quién vendió y a qué precio. Solo el
   admin puede **anular** una venta (el stock vuelve solo).
 - **Descuentos / promociones** (*Admin → Reglas de descuento*): ya vienen las dos
   reglas actuales (5+ productos → 5 %, 10+ → 10 %). Puedes crear más: por
   categoría, por producto, con fechas de vigencia, acumulables o no. Las reglas
   no acumulables no se suman: se aplica solo la que más descuenta. Además cada
   venta/cotización admite un descuento adicional manual en Bs.
+- **Recibo de respaldo**: cada venta tiene un botón «Recibo de respaldo (PDF)»
+  (una sola hoja, con firmas, marca «ANULADA» si se anuló). No muestra stock ni lugares.
+- **Sin decimales**: todo el dinero del panel y de los PDFs se calcula y se muestra
+  en enteros (se redondea al entero más cercano; 0,5 sube).
+- **Contacto**: en *Admin → Configuración del sitio → Contacto* hay hasta 2 **teléfonos de
+  contacto** (los que se muestran en el sitio, las cotizaciones y los recibos) y hasta
+  2 **WhatsApp** (se usan solo en los botones que abren WhatsApp, cada uno con un nombre
+  opcional como «Ventas»). Pueden ser los mismos números. Con 2 WhatsApp, la burbuja
+  del sitio abre un menú para elegir con quién hablar, y cada producto muestra un botón
+  por número. Si no hay teléfonos de contacto, se muestran los de WhatsApp.
+- **PDFs**: la cotización y el recibo se abren directo en el navegador (no se fuerza la descarga).
+- **Acceso**: el sitio público tiene un enlace «Acceder» en el encabezado
+  (pantallas grandes) y otro en el pie, que llevan a `/panel/`.
 - **Cotizaciones**: eliges productos y cantidades, ves el total con las
   promociones aplicadas y descargas un **PDF** para el cliente (sin stock ni
   lugares). No descuenta stock.

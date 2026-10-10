@@ -143,7 +143,16 @@ class ConfiguracionSitioAdmin(admin.ModelAdmin):
             "fields": ("envios_nacionales", "texto_envios", "detalle_envios"),
         }),
         ("Contacto", {
-            "fields": ("whatsapp_numero", "mensaje_whatsapp_base", "telefono", "email_contacto")
+            "fields": (
+                ("whatsapp_numero", "whatsapp_etiqueta"),
+                ("whatsapp_numero_2", "whatsapp_etiqueta_2"),
+                "mensaje_whatsapp_base",
+                ("telefono", "telefono_2"),
+                "email_contacto",
+            ),
+            "description": "Los TELÉFONOS DE CONTACTO son los que se muestran en el sitio, las cotizaciones y los recibos. "
+                           "Los WHATSAPP se usan solo en los botones que abren WhatsApp (si hay 2, la burbuja "
+                           "muestra las dos opciones). Pueden ser los mismos números.",
         }),
         ("Costo de la impresora (para calcular precios sugeridos)", {
             "fields": (

@@ -1,5 +1,5 @@
 import json
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
 
 from django.contrib import messages
@@ -16,9 +16,10 @@ from django.views.decorators.http import require_POST
 from catalogo.models import Producto
 
 from . import servicios
+from .fotos import foto_panel
 from .lineas import leer_decimal, leer_lineas
 from .models import Cotizacion, MovimientoStock, Stock, Ubicacion, Venta, VentaItem
-from .pdf import generar_pdf_cotizacion
+from .pdf import generar_pdf_cotizacion, generar_pdf_recibo
 from .servicios import ErrorNegocio
 
 User = get_user_model()
@@ -92,17 +93,19 @@ def stock_lista(request):
     for p in productos:
         por_ub = {s.ubicacion_id: s.cantidad for s in p.stocks.all() if s.ubicacion_id in ids_ub}
         total = sum(por_ub.values())
-        if solo_con_stock and total == 0:
+        if solo_con_stock and total <= 0:
             continue
         if donde.isdigit() and por_ub.get(int(donde), 0) == 0:
             continue
         filas.append({
-            "producto": p, "total": total,
+            "producto": p, "total": total, "foto": foto_panel(p),
             "lugares": [{"ubicacion": u, "cantidad": por_ub.get(u.pk, 0)} for u in ubicaciones],
         })
     return render(request, "panel/stock_lista.html", {
         "filas": filas, "ubicaciones": ubicaciones, "q": q, "donde": donde, "con_stock": solo_con_stock,
-        "total_unidades": sum(f["total"] for f in filas),
+        "total_unidades": sum(max(f["total"], 0) for f in filas),
+        # Unidades vendidas sin stock registrado (stock negativo), por cubrir
+        "por_cubrir": sum(-l["cantidad"] for f in filas for l in f["lugares"] if l["cantidad"] < 0),
     })
 
 
@@ -120,6 +123,7 @@ def stock_producto(request, pk):
     return render(request, "panel/stock_producto.html", {
         "producto": producto, "lugares": lugares, "ubicaciones": ubicaciones,
         "total": sum(l["cantidad"] for l in lugares),
+        "por_cubrir": sum(-l["cantidad"] for l in lugares if l["cantidad"] < 0),
         "ventas_recientes": ventas_recientes, "movimientos": movimientos,
     })
 
@@ -183,23 +187,29 @@ def stock_ajuste(request, pk):
 # Formulario compartido de venta / cotización
 # --------------------------------------------------------------------------
 def _datos_productos():
-    """Productos con su stock por lugar, para el selector del formulario."""
-    ubic = {u.pk: u.nombre for u in Ubicacion.objects.filter(activa=True)}
-    productos = Producto.objects.prefetch_related("stocks").order_by("nombre")
+    """Productos con su stock por lugar (todos los lugares activos, incluso con
+    0 o negativo), para las tarjetas y el selector del formulario."""
+    ubicaciones = list(Ubicacion.objects.filter(activa=True))
+    ids = {u.pk for u in ubicaciones}
+    productos = Producto.objects.prefetch_related("stocks", "imagenes").order_by("nombre")
     datos = []
     for p in productos:
-        stock = {str(s.ubicacion_id): s.cantidad for s in p.stocks.all() if s.ubicacion_id in ubic and s.cantidad > 0}
-        datos.append({"id": p.pk, "nombre": p.nombre, "precio": str(p.precio),
-                      "stock": stock, "total": sum(stock.values())})
-    return datos, ubic
+        stock = {str(u.pk): 0 for u in ubicaciones}
+        for s in p.stocks.all():
+            if s.ubicacion_id in ids:
+                stock[str(s.ubicacion_id)] = s.cantidad
+        datos.append({"id": p.pk, "nombre": p.nombre,
+                      "precio": str(p.precio.quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
+                      "stock": stock, "total": sum(stock.values()), "foto": foto_panel(p)})
+    return datos, ubicaciones
 
 
 def _contexto_formulario(request, tipo, previas=None, errores=None):
-    datos, ubic = _datos_productos()
+    datos, ubicaciones = _datos_productos()
     return {
         "tipo": tipo,
         "productos_json": datos,
-        "ubicaciones_json": {str(k): v for k, v in ubic.items()},
+        "ubicaciones_json": [{"id": u.pk, "nombre": u.nombre} for u in ubicaciones],
         "filas_json": previas or [],
         "errores": errores or [],
         "post": request.POST if request.method == "POST" else {},
@@ -289,6 +299,15 @@ def venta_detalle(request, pk):
     return render(request, "panel/venta_detalle.html", {"venta": venta, "items": items})
 
 
+@login_required
+def venta_recibo(request, pk):
+    """Recibo de la venta en PDF (una sola hoja), solo como respaldo."""
+    venta = get_object_or_404(_ventas_visibles(request), pk=pk)
+    respuesta = HttpResponse(generar_pdf_recibo(venta), content_type="application/pdf")
+    respuesta["Content-Disposition"] = f'inline; filename="recibo-{venta.pk:05d}.pdf"'
+    return respuesta
+
+
 @solo_admin
 @require_POST
 def venta_anular(request, pk):
@@ -345,7 +364,7 @@ def cotizacion_detalle(request, pk):
 def cotizacion_pdf(request, pk):
     cot = get_object_or_404(_cotizaciones_visibles(request), pk=pk)
     respuesta = HttpResponse(generar_pdf_cotizacion(cot), content_type="application/pdf")
-    respuesta["Content-Disposition"] = f'attachment; filename="cotizacion-{cot.numero}.pdf"'
+    respuesta["Content-Disposition"] = f'inline; filename="cotizacion-{cot.numero}.pdf"'
     return respuesta
 
 

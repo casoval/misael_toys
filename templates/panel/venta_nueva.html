@@ -3,7 +3,7 @@
 {% block titulo %}Nueva venta{% endblock %}
 {% block contenido %}
 <h1>Nueva venta</h1>
-<p class="p-soft">Elige el producto y de qué lugar sale. El precio se llena solo, pero puedes cambiarlo si se vendió a otro precio.</p>
+<p class="p-soft">Toca la foto del producto para agregarlo (otra vez para sumar uno) y usa el botón <b>−</b> de la tarjeta para quitar. Siempre se puede vender, haya o no stock registrado: si falta, queda anotado como «por cubrir».</p>
 {% include "panel/_form_lineas.html" %}
 {% endblock %}
-{% block scripts %}<script src="{% static 'js/panel_form.js' %}"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'js/panel_form.js' %}"></script><script src="{% static 'js/panel_vista.js' %}"></script>{% endblock %}

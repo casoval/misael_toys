@@ -12,7 +12,7 @@ from .models import (
     Cotizacion, CotizacionItem, MovimientoStock, ReglaDescuento, Stock, Venta, VentaItem,
 )
 
-CENTAVO = Decimal("0.01")
+ENTERO = Decimal("1")
 
 
 class ErrorNegocio(Exception):
@@ -20,7 +20,8 @@ class ErrorNegocio(Exception):
 
 
 def _q(valor):
-    return Decimal(valor).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+    """Redondea al entero más cercano (0.5 sube). Todo el dinero del panel va sin decimales."""
+    return Decimal(valor).quantize(ENTERO, rounding=ROUND_HALF_UP)
 
 
 # --------------------------------------------------------------------------
@@ -37,7 +38,7 @@ def calcular_totales(lineas, aplicar_reglas=True, descuento_extra=0, hoy=None):
     items = []
     for l in lineas:
         g = (lambda k: l[k]) if isinstance(l, dict) else (lambda k: getattr(l, k))
-        items.append((g("producto"), int(g("cantidad")), Decimal(g("precio_unitario"))))
+        items.append((g("producto"), int(g("cantidad")), _q(g("precio_unitario"))))
 
     unidades = sum(c for _, c, _ in items)
     subtotal = _q(sum((c * p for _, c, p in items), Decimal("0")))
@@ -102,7 +103,7 @@ def calcular_totales(lineas, aplicar_reglas=True, descuento_extra=0, hoy=None):
 def texto_reglas(aplicadas):
     """Texto plano para guardar qué reglas se aplicaron en el momento."""
     return "\n".join(
-        f"{a['nombre']} ({a['porcentaje'].normalize():f}%): -Bs. {a['monto']}" for a in aplicadas
+        f"{a['nombre']} ({a['porcentaje'].normalize():f}%): -Bs. {a['monto']:.0f}" for a in aplicadas
     )
 
 
@@ -115,12 +116,16 @@ def _stock_bloqueado(producto, ubicacion):
 
 
 @transaction.atomic
-def mover_stock(producto, ubicacion, delta, tipo, usuario=None, nota="", venta=None):
-    """Suma/resta stock en una ubicación y deja el rastro en el historial."""
+def mover_stock(producto, ubicacion, delta, tipo, usuario=None, nota="", venta=None, permitir_negativo=False):
+    """Suma/resta stock en una ubicación y deja el rastro en el historial.
+    Solo las ventas pueden dejar el stock en negativo (`permitir_negativo`)."""
     if delta == 0:
         raise ErrorNegocio("La cantidad no puede ser 0.")
     stock = _stock_bloqueado(producto, ubicacion)
-    if stock.cantidad + delta < 0:
+    # Solo una SALIDA puede bloquearse por falta de stock. Las entradas (ingresos,
+    # anulaciones, traslados que llegan) siempre se permiten, aunque el stock
+    # siga negativo después de sumarlas.
+    if delta < 0 and stock.cantidad + delta < 0 and not permitir_negativo:
         raise ErrorNegocio(
             f"No hay suficiente «{producto.nombre}» en {ubicacion.nombre} "
             f"(hay {stock.cantidad}, se pidió {-delta})."
@@ -170,8 +175,13 @@ def ajustar(producto, ubicacion, nueva_cantidad, usuario, nota=""):
 # --------------------------------------------------------------------------
 @transaction.atomic
 def registrar_venta(vendedor, items, cliente="", observaciones="", aplicar_reglas=True, descuento_extra=0):
-    """`items`: lista de dicts producto, ubicacion, cantidad, precio_unitario.
-    Descuenta del stock del lugar elegido; si algo no alcanza, no se guarda nada."""
+    """`items`: lista de dicts producto, ubicacion (o None), cantidad, precio_unitario.
+
+    NUNCA se bloquea por falta de stock: el producto puede existir físicamente
+    sin estar registrado, o venderse para entregar después. Si el lugar no tiene
+    suficiente, el stock queda en negativo (= unidades vendidas por cubrir) y
+    en el ítem queda anotado cuántas unidades fueron "sin stock". Si no se
+    elige lugar (ubicacion None), no se descuenta de ninguno."""
     if not items:
         raise ErrorNegocio("Agrega al menos un producto.")
     totales = calcular_totales(items, aplicar_reglas, descuento_extra)
@@ -181,16 +191,23 @@ def registrar_venta(vendedor, items, cliente="", observaciones="", aplicar_regla
         detalle_reglas=texto_reglas(totales["aplicadas"]),
         descuento_extra=totales["descuento_extra"], total=totales["total"],
     )
-    # Se agrupa por (producto, lugar) para validar bien si el mismo producto
-    # aparece en dos filas del mismo lugar.
     for it in items:
+        ub = it.get("ubicacion")
+        faltante = 0
+        if ub is not None:
+            # Se lee fila por fila: si el mismo producto aparece dos veces en el
+            # mismo lugar, la segunda fila ya ve lo que descontó la primera.
+            antes = _stock_bloqueado(it["producto"], ub).cantidad
+            faltante = max(0, it["cantidad"] - max(antes, 0))
         VentaItem.objects.create(
-            venta=venta, producto=it["producto"], ubicacion=it["ubicacion"],
-            cantidad=it["cantidad"], precio_lista=it["producto"].precio,
+            venta=venta, producto=it["producto"], ubicacion=ub, cantidad=it["cantidad"],
+            faltante=faltante, precio_lista=_q(it["producto"].precio),
             precio_unitario=_q(it["precio_unitario"]),
         )
-        mover_stock(it["producto"], it["ubicacion"], -it["cantidad"], MovimientoStock.VENTA,
-                    vendedor, f"Venta #{venta.pk}", venta=venta)
+        if ub is not None:
+            nota = f"Venta #{venta.pk}" + (f" (sin stock suficiente: faltaban {faltante})" if faltante else "")
+            mover_stock(it["producto"], ub, -it["cantidad"], MovimientoStock.VENTA,
+                        vendedor, nota, venta=venta, permitir_negativo=True)
     return venta
 
 
@@ -200,6 +217,8 @@ def anular_venta(venta, usuario, motivo=""):
     if venta.anulada:
         raise ErrorNegocio("Esta venta ya está anulada.")
     for it in venta.items.select_related("producto", "ubicacion"):
+        if it.ubicacion is None:
+            continue
         mover_stock(it.producto, it.ubicacion, it.cantidad, MovimientoStock.ANULACION,
                     usuario, f"Anulación venta #{venta.pk}", venta=venta)
     venta.anulada = True

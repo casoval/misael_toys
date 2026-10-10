@@ -3,7 +3,7 @@
 {% block titulo %}Nueva cotización{% endblock %}
 {% block contenido %}
 <h1>Nueva cotización</h1>
-<p class="p-soft">Elige los productos y cantidades. Verás el total con las promociones y luego podrás descargar el PDF para el cliente. No descuenta stock.</p>
+<p class="p-soft">Toca la foto de cada producto para agregarlo (otra vez para sumar uno) y usa el botón <b>−</b> de la tarjeta para quitar. Verás el total con las promociones y luego podrás descargar el PDF para el cliente. No descuenta stock.</p>
 {% include "panel/_form_lineas.html" %}
 {% endblock %}
-{% block scripts %}<script src="{% static 'js/panel_form.js' %}"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'js/panel_form.js' %}"></script><script src="{% static 'js/panel_vista.js' %}"></script>{% endblock %}

@@ -180,10 +180,13 @@ def producto_detalle(request, slug):
     )
     config = ConfiguracionSitio.get()
 
-    whatsapp_url = None
-    if config.whatsapp_numero:
-        mensaje = config.mensaje_whatsapp_base.format(producto=producto.nombre)
-        whatsapp_url = f"https://wa.me/{config.whatsapp_numero}?text={quote(mensaje)}"
+    # Un botón por cada WhatsApp configurado (1 o 2)
+    mensaje = config.mensaje_whatsapp_base.format(producto=producto.nombre)
+    whatsapp_opciones = [
+        {"titulo": w["titulo"], "url": f"https://wa.me/{w['numero']}?text={quote(mensaje)}"}
+        for w in config.whatsapps
+    ]
+    whatsapp_url = whatsapp_opciones[0]["url"] if whatsapp_opciones else None
 
     relacionados = []
     if producto.categoria:
@@ -200,6 +203,7 @@ def producto_detalle(request, slug):
         "producto": producto,
         "config": config,
         "whatsapp_url": whatsapp_url,
+        "whatsapp_opciones": whatsapp_opciones,
         "relacionados": relacionados,
         "ya_dio_like": ya_dio_like,
         "seo": seo.seo_producto(producto, config),

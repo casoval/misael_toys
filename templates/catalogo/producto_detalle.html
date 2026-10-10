@@ -92,14 +92,18 @@
       </div>
       {% endif %}
 
-      {% if whatsapp_url %}
-      <a href="{{ whatsapp_url }}" target="_blank" rel="noopener" class="btn-whatsapp">
-        Consultar por WhatsApp
-      </a>
-      {% elif config.telefono or config.email_contacto %}
+      {% if whatsapp_opciones %}
+      <div class="wa-botones">
+        {% for o in whatsapp_opciones %}
+        <a href="{{ o.url }}" target="_blank" rel="noopener" class="btn-whatsapp">
+          {% if whatsapp_opciones|length > 1 %}WhatsApp · {{ o.titulo }}{% else %}Consultar por WhatsApp{% endif %}
+        </a>
+        {% endfor %}
+      </div>
+      {% elif config.contactos or config.email_contacto %}
       <p>Para consultar sobre este producto, contáctanos:
-        {% if config.telefono %}{{ config.telefono }}{% endif %}
-        {% if config.email_contacto %} · {{ config.email_contacto }}{% endif %}
+        {% if config.contactos %}{{ config.contactos|join:" · " }}{% endif %}
+        {% if config.email_contacto %}{% if config.contactos %} · {% endif %}{{ config.email_contacto }}{% endif %}
       </p>
       {% endif %}
 

@@ -16,12 +16,12 @@
 <div class="p-kpis">
   <div><span class="p-soft">Ventas</span><b>{{ resumen.n }}</b></div>
   <div><span class="p-soft">Unidades</span><b>{{ unidades }}</b></div>
-  <div><span class="p-soft">Total vendido</span><b>Bs. {{ resumen.total|default:"0" }}</b></div>
+  <div><span class="p-soft">Total vendido</span><b>Bs. {{ resumen.total|default:"0"|floatformat:0 }}</b></div>
 </div>
 
 {% if por_vendedor %}
 <div class="p-card"><h2>Por vendedor</h2>
-  {% for v in por_vendedor %}<div class="p-linea"><b>{{ v.vendedor__username|default:"(usuario eliminado)" }}</b><span>{{ v.n }} venta{{ v.n|pluralize }}</span><span>Bs. {{ v.total }}</span></div>{% endfor %}
+  {% for v in por_vendedor %}<div class="p-linea"><b>{{ v.vendedor__username|default:"(usuario eliminado)" }}</b><span>{{ v.n }} venta{{ v.n|pluralize }}</span><span>Bs. {{ v.total|floatformat:0 }}</span></div>{% endfor %}
 </div>
 {% endif %}
 
@@ -29,9 +29,9 @@
 {% for v in ventas %}
   <a class="p-fila-venta {% if v.anulada %}anulada{% endif %}" href="{% url 'panel:venta_detalle' v.pk %}">
     <div><strong>#{{ v.pk }}</strong> <span class="p-soft">{{ v.creado|date:"d/m/Y H:i" }}</span>
-      {% if v.anulada %}<span class="p-tag">ANULADA</span>{% endif %}<br>
+      {% if v.anulada %}<span class="p-tag">ANULADA</span>{% elif v.tiene_faltante %}<span class="p-tag warn">SIN STOCK</span>{% endif %}<br>
       <span class="p-soft">{{ v.vendedor.username|default:"—" }}{% if v.cliente %} → {{ v.cliente }}{% endif %} · {{ v.unidades }} unid.</span></div>
-    <div class="p-monto">Bs. {{ v.total }}</div>
+    <div class="p-monto">Bs. {{ v.total|floatformat:0 }}</div>
   </a>
 {% empty %}<p class="p-soft">No hay ventas con esos filtros.</p>{% endfor %}
 </div>

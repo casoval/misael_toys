@@ -1,3 +1,5 @@
+import re
+
 from django.db import models
 from django.utils.text import slugify
 from django.urls import reverse
@@ -347,21 +349,65 @@ class ConfiguracionSitio(models.Model):
 
     nombre_tienda = models.CharField(max_length=100, default="Misael Toys")
     whatsapp_numero = models.CharField(
-        max_length=20, blank=True,
-        help_text="Con código de país, sin '+' ni espacios. Ej: 59171234567"
+        max_length=20, blank=True, verbose_name="WhatsApp 1 (solo para los botones)",
+        help_text="Solo se usa en los botones que abren WhatsApp. Con código de país. Ej: 59171234567"
+    )
+    whatsapp_etiqueta = models.CharField(
+        max_length=40, blank=True, verbose_name="Nombre del WhatsApp 1 (opcional)",
+        help_text="Aparece en la burbuja de WhatsApp. Ej: Ventas, Consultas, Rosa"
+    )
+    whatsapp_numero_2 = models.CharField(
+        max_length=20, blank=True, verbose_name="WhatsApp 2 (opcional, solo para los botones)",
+        help_text="Segundo número para los botones de WhatsApp. Mismo formato: 59171234567"
+    )
+    whatsapp_etiqueta_2 = models.CharField(
+        max_length=40, blank=True, verbose_name="Nombre del WhatsApp 2 (opcional)",
+        help_text="Ej: Ventas, Consultas, Rosa"
     )
     mensaje_whatsapp_base = models.CharField(
         max_length=250,
         default="Hola, quiero consultar sobre el producto: {producto}",
         help_text="Usa {producto} donde quieras que aparezca el nombre del producto",
     )
-    telefono = models.CharField(max_length=30, blank=True)
+    telefono = models.CharField(max_length=30, blank=True, verbose_name="Teléfono de contacto 1",
+        help_text="Es el número que se muestra en el sitio, las cotizaciones y los recibos")
+    telefono_2 = models.CharField(max_length=30, blank=True, verbose_name="Teléfono de contacto 2 (opcional)",
+        help_text="Segundo número que se muestra junto al primero")
     email_contacto = models.EmailField(blank=True)
     texto_bienvenida = models.CharField(
         max_length=250, blank=True,
         default="Jugar · Explorar · Aprender — juguetes sensoriales impresos en 3D",
     )
     horario_atencion = models.CharField(max_length=150, blank=True)
+
+    # --- Contacto: hasta 2 teléfonos y 2 WhatsApp ---
+    @property
+    def whatsapps(self):
+        """Lista de WhatsApp configurados: [{numero, visible, etiqueta, titulo}].
+        `numero` queda solo con dígitos (lo que necesita wa.me), aunque se haya
+        escrito con '+' o espacios."""
+        lista = []
+        for numero, etiqueta in ((self.whatsapp_numero, self.whatsapp_etiqueta),
+                                 (self.whatsapp_numero_2, self.whatsapp_etiqueta_2)):
+            digitos = re.sub(r"\D", "", numero or "")
+            if digitos:
+                etiqueta = (etiqueta or "").strip()
+                lista.append({"numero": digitos, "visible": f"+{digitos}",
+                              "etiqueta": etiqueta, "titulo": etiqueta or f"+{digitos}"})
+        return lista
+
+    @property
+    def contactos(self):
+        """Números para MOSTRAR (encabezado del sitio, cotizaciones, recibos): los
+        teléfonos de contacto. Solo si no hay ninguno se usan los de WhatsApp, para
+        que nunca falte un número visible. Los WhatsApp, en cambio, se usan solo en
+        los botones que abren WhatsApp."""
+        return self.telefonos or [w["visible"] for w in self.whatsapps]
+
+    @property
+    def telefonos(self):
+        """Teléfonos de contacto no vacíos (hasta 2), tal como se escribieron."""
+        return [t.strip() for t in (self.telefono, self.telefono_2) if t and t.strip()]
 
     # --- Envíos ---
     envios_nacionales = models.BooleanField(

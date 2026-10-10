@@ -1389,3 +1389,68 @@ body.sin-scroll {
   font-size: 0.75rem;
   color: var(--ink-soft);
 }
+
+
+/* --- Acceso al panel interno de vendedores (inventario / ventas) --- */
+.acceso-panel {
+  display: inline-block;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--clay);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--teal-dark) !important;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+.acceso-panel:hover { border-color: var(--teal); background: #E6F5F3; }
+.acceso-panel-header { margin-left: auto; flex: none; }
+.footer-panel { margin-top: 0.75rem; }
+/* En celular el encabezado ya está lleno: el acceso se ve en el pie */
+@media (max-width: 480px) { .acceso-panel-header { display: none; } }
+
+
+/* --- Dos WhatsApp: burbuja con menú para elegir, y botones en cada producto --- */
+.wa-flotante {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 80;
+}
+.wa-flotante .btn-whatsapp-flotante {
+  position: static;
+  border: 0;
+  cursor: pointer;
+}
+.wa-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.75rem);
+  width: min(17rem, calc(100vw - 2rem));
+  background: #fff;
+  border: 1px solid var(--clay);
+  border-radius: var(--radius);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18);
+  padding: 0.6rem;
+}
+.wa-menu[hidden] { display: none; }
+.wa-menu-titulo { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--ink-soft); }
+.wa-opcion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.65rem 0.8rem;
+  margin-top: 0.4rem;
+  border-radius: 0.6rem;
+  background: #25D366;
+  color: #fff !important;
+  text-decoration: none !important;
+  font-weight: 700;
+}
+.wa-opcion:hover, .wa-opcion:focus-visible { background: #1da851; }
+.wa-opcion-num { font-size: 0.8rem; font-weight: 500; opacity: 0.95; }
+.wa-botones { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+@media (max-width: 700px) {
+  .wa-flotante { right: 1rem; bottom: 1rem; }
+}

@@ -51,7 +51,7 @@ def _tienda(config):
             "name": "Centro de Neurodesarrollo Infantil MISAEL",
             "url": "https://neuromisael.com/",
         },
-        **({"telephone": config.telefono} if config.telefono else {}),
+        **({"telephone": config.contactos[0]} if config.contactos else {}),
     }
 
 

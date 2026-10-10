@@ -8,7 +8,7 @@
   <a class="p-fila-venta" href="{% url 'panel:cotizacion_detalle' c.pk %}">
     <div><strong>N° {{ c.numero }}</strong> <span class="p-soft">{{ c.creado|date:"d/m/Y H:i" }}</span><br>
       <span class="p-soft">{{ c.creador.username|default:"—" }}{% if c.cliente %} → {{ c.cliente }}{% endif %} · {{ c.unidades }} unid.</span></div>
-    <div class="p-monto">Bs. {{ c.total }}</div>
+    <div class="p-monto">Bs. {{ c.total|floatformat:0 }}</div>
   </a>
 {% empty %}<p class="p-soft">Aún no hay cotizaciones.</p>{% endfor %}
 </div>

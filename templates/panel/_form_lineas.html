@@ -6,21 +6,31 @@
   {% csrf_token %}
 
   <div class="p-card">
-    <h2>Productos</h2>
-    <div id="filas"></div>
-    <button type="button" id="agregar-fila" class="p-btn p-btn-sec">+ Agregar otro producto</button>
+    <div class="p-vistabar">
+      <h2>1. Toca los productos</h2>
+      {% include "panel/_toggle_vista.html" %}
+    </div>
+    <input type="search" class="p-buscar" placeholder="Buscar producto…" data-filtro autocomplete="off">
+    <div id="picker-aviso" class="p-aviso" aria-live="polite"></div>
+    <div id="picker" class="p-productos vista-tarjetas" data-vista-contenedor></div>
   </div>
 
   <div class="p-card">
-    <h2>Descuentos</h2>
+    <h2>2. Detalle {% if tipo == "venta" %}de la venta{% else %}de la cotización{% endif %}</h2>
+    <div id="filas"></div>
+    <button type="button" id="agregar-fila" class="p-btn p-btn-sec">+ Agregar con lista desplegable</button>
+  </div>
+
+  <div class="p-card">
+    <h2>3. Descuentos</h2>
     <label class="p-check"><input type="checkbox" name="aplicar_reglas" {% if aplicar_reglas %}checked{% endif %}>
       Aplicar promociones por cantidad automáticamente</label>
     <label>Descuento adicional (Bs.) <small class="p-soft">opcional</small>
-      <input type="text" name="descuento_extra" inputmode="decimal" value="{{ post.descuento_extra }}" placeholder="0"></label>
+      <input type="text" name="descuento_extra" inputmode="numeric" value="{{ post.descuento_extra }}" placeholder="0"></label>
   </div>
 
   <div class="p-card">
-    <h2>Datos</h2>
+    <h2>4. Datos</h2>
     <label>Cliente <small class="p-soft">opcional</small> <input type="text" name="cliente" maxlength="120" value="{{ post.cliente }}"></label>
     {% if tipo == "cotizacion" %}
     <label>Válida por (días) <input type="number" name="validez_dias" min="1" value="{{ post.validez_dias|default:'7' }}" inputmode="numeric"></label>
@@ -36,11 +46,13 @@
 
 <template id="tpl-fila">
   <div class="p-fila-form">
+    <span class="f-foto"><img alt="" hidden></span>
     <label class="f-prod">Producto <select name="producto"></select></label>
     {% if tipo == "venta" %}<label class="f-ubic">De dónde sale <select name="ubicacion"></select></label>{% endif %}
     <label class="f-cant">Cant. <input type="number" name="cantidad" min="1" value="1" inputmode="numeric"></label>
-    <label class="f-precio">Precio c/u (Bs.) <input type="text" name="precio" inputmode="decimal"></label>
+    <label class="f-precio">Precio c/u (Bs.) <input type="text" name="precio" inputmode="numeric"></label>
     <button type="button" class="p-quitar" title="Quitar" aria-label="Quitar fila">✕</button>
+    <small class="f-aviso"></small>
   </div>
 </template>
 
