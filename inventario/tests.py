@@ -626,3 +626,51 @@ class PlantillasLimpiasTests(Base):
             self.assertNotIn("{%", html, url)
         self.client.logout()
         self.assertNotIn("{#", self.client.get(reverse("panel:login")).content.decode())
+
+
+class TarjetasCelularTests(Base):
+    """Las tarjetas llevan categoría, descripción y medidas (se muestran en celular, como en la página principal)."""
+
+    def setUp(self):
+        super().setUp()
+        self.p1.descripcion_corta = "Cubo con texturas para explorar con las manos"
+        self.p1.largo_cm = D("8"); self.p1.ancho_cm = D("8"); self.p1.alto_cm = D("8")
+        self.p1.save()
+        self.client.login(username="ana", password="x")
+
+    def test_stock_trae_categoria_descripcion_y_medidas(self):
+        r = self.client.get(reverse("panel:stock"))
+        self.assertContains(r, 'class="p-prod-cat p-x"')
+        self.assertContains(r, "Táctil")
+        self.assertContains(r, "Cubo con texturas para explorar con las manos")
+        self.assertContains(r, "8 × 8 × 8 cm")
+
+    def test_selector_de_venta_y_cotizacion_trae_los_mismos_datos(self):
+        for nombre in ("panel:venta_nueva", "panel:cotizacion_nueva"):
+            r = self.client.get(reverse(nombre))
+            datos = {p["nombre"]: p for p in r.context["productos_json"]}
+            self.assertEqual(datos["Pop it"]["cat"], "Táctil")
+            self.assertTrue(datos["Pop it"]["cat_color"].startswith("#"))
+            self.assertEqual(datos["Pop it"]["desc"], "Cubo con texturas para explorar con las manos")
+            self.assertEqual(datos["Pop it"]["medidas"], "8 × 8 × 8 cm")
+            self.assertEqual(datos["Cubo"]["cat"], "")
+            self.assertEqual(datos["Cubo"]["medidas"], "")
+
+    def test_el_selector_sigue_sin_consultas_por_producto(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        self.client.get(reverse("panel:venta_nueva"))
+        with CaptureQueriesContext(connection) as pocas:
+            self.client.get(reverse("panel:venta_nueva"))
+        for i in range(10):
+            Producto.objects.create(nombre=f"Más {i}", precio=D("5"), categoria=self.cat, descripcion_corta="x")
+        with CaptureQueriesContext(connection) as muchas:
+            self.client.get(reverse("panel:venta_nueva"))
+        self.assertEqual(len(pocas), len(muchas))
+        self.client.get(reverse("panel:stock"))
+        with CaptureQueriesContext(connection) as stock_muchas:
+            self.client.get(reverse("panel:stock"))
+        Producto.objects.create(nombre="Uno más", precio=D("5"), categoria=self.cat)
+        with CaptureQueriesContext(connection) as stock_mas:
+            self.client.get(reverse("panel:stock"))
+        self.assertEqual(len(stock_muchas), len(stock_mas))

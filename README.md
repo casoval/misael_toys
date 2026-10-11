@@ -72,6 +72,9 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   grandes los productos van a la izquierda y el detalle con el total a la derecha (siempre
   visible); en celular, el total queda fijo abajo en una barra delgada y las opciones
   (descuento, cliente, notas) empiezan cerradas para hacer menos scroll.
+- **Tarjetas en celular**: 2 por fila, con categoría (con su color), nombre, descripción corta,
+  medidas, precio y stock por lugar, como en la página principal. En pantallas grandes son más
+  chicas y compactas.
 - **Filtros** (Stock, Vender y Cotizar): los mismos que se van generando en el catálogo público —
   categorías y atributos como Material, Edad o Color (los que tengan «mostrar como filtro»)— más
   precio, «hay en [lugar]» y «solo con stock». Se aplican al instante, sin recargar. Dentro de un
