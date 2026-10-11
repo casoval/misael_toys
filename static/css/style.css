@@ -1299,3 +1299,209 @@ body.sin-scroll {
 @media (max-width: 700px) {
   .wa-flotante { right: 1rem; bottom: 1rem; }
 }
+
+
+/* =====================================================================
+   Categorías ("Explora por categoría"), aviso de envíos, filtros laterales
+   y tarjetas de producto en celular (2 por fila)
+   ===================================================================== */
+
+/* --- Explora por categoría: botones con el color de cada categoría --- */
+.explora-categorias {
+  max-width: var(--ancho-contenido);
+  margin: 0 auto 1rem;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.55rem;
+}
+
+.explora-titulo {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--teal-dark);
+  margin-right: 0.25rem;
+  white-space: nowrap;
+}
+
+.explora-link {
+  --c: var(--teal);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.9rem 0.4rem 0.7rem;
+  background: #fff;
+  border: 1.5px solid var(--clay);
+  border-color: color-mix(in srgb, var(--c) 35%, var(--clay));
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(46, 42, 37, 0.08);
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+              transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.explora-link::before {
+  content: "";
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--c);
+  flex-shrink: 0;
+  transition: box-shadow 0.18s ease;
+}
+
+.explora-link:hover,
+.explora-link:focus-visible {
+  background: var(--c);
+  border-color: var(--c);
+  color: #fff;
+  transform: translateY(-0.125rem);
+  box-shadow: 0 0.3rem 0.7rem color-mix(in srgb, var(--c) 40%, transparent);
+}
+.explora-link:hover::before,
+.explora-link:focus-visible::before { box-shadow: 0 0 0 0.12rem #fff; }
+
+.explora-link[aria-current="page"] {
+  background: var(--c);
+  border-color: var(--c);
+  color: #fff;
+  box-shadow: 0 0.25rem 0.65rem color-mix(in srgb, var(--c) 40%, transparent);
+}
+.explora-link[aria-current="page"]::before { box-shadow: 0 0 0 0.12rem #fff; }
+
+/* En celular: una sola fila que se desliza de lado (no ocupa 5 renglones) */
+@media (max-width: 700px) {
+  .explora-categorias {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .explora-categorias::-webkit-scrollbar { display: none; }
+  .explora-titulo { display: none; }
+  .explora-link { flex: none; scroll-snap-align: start; }
+  /* un respiro al final para que la última categoría no quede pegada al borde */
+  .explora-categorias::after { content: ""; flex: 0 0 0.5rem; }
+}
+
+/* --- Envíos a todo el país --- */
+.franja-envios {
+  width: min(calc(100% - 2.5rem), calc(var(--ancho-contenido) - 2.5rem));
+  margin: 0 auto 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 1.15rem 0.7rem 0.8rem;
+  background: linear-gradient(100deg, #E3F4F1 0%, #F4FAF8 55%, #FFF3DC 100%);
+  border: 1px solid #BFE3DE;
+  border-left: 0.35rem solid var(--teal);
+  border-radius: 1rem;
+  box-shadow: 0 0.2rem 0.7rem rgba(31, 111, 107, 0.1);
+}
+
+.envios-icono {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--teal);
+  font-size: 1.35rem;
+  box-shadow: 0 0.15rem 0.5rem rgba(14, 148, 136, 0.25);
+  animation: camion-llega 0.9s cubic-bezier(.2,.8,.3,1) both;
+}
+
+@keyframes camion-llega {
+  from { transform: translateX(-1.2rem); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.envios-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+.envios-texto b {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--teal-dark);
+}
+.envios-texto small {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .envios-icono { animation: none; }
+  .explora-link { transition: none; }
+}
+
+/* --- Filtros laterales: la opción elegida se nota --- */
+.filtro-grupo .filtro-opcion {
+  padding: 0.38rem 0.55rem;
+  margin: 0 -0.55rem;
+  border-radius: 0.6rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.filtro-grupo .filtro-opcion:hover { background: #EEF7F6; }
+.filtro-grupo .filtro-opcion:has(input:checked) {
+  background: #DDF1EE;
+  color: var(--teal-dark);
+  font-weight: 600;
+}
+.filtro-grupo .filtro-opcion:has(input:checked) .categoria-punto { box-shadow: 0 0 0 0.15rem #fff, 0 0 0 0.25rem currentColor; }
+/* colores: el elegido se marca con un aro */
+.filtro-grupo .filtro-color { margin: 0; padding: 0.15rem; }
+.filtro-grupo .filtro-color:has(input:checked) { background: transparent; }
+.filtro-color:has(input:checked) .swatch { box-shadow: 0 0 0 0.15rem #fff, 0 0 0 0.3rem var(--teal); }
+
+/* --- Tarjetas de producto: 2 por fila en celular --- */
+@media (max-width: 599px) {
+  .grid-productos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+
+  .tarjeta-cuerpo { padding: 0.55rem 0.6rem 0.65rem; gap: 0.15rem; }
+
+  .tarjeta-categoria {
+    max-width: 100%;
+    font-size: 0.6rem;
+    padding: 0.14rem 0.5rem;
+    margin-bottom: 0.3rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tarjeta-nombre { font-size: 0.93rem; line-height: 1.15; margin: 0; }
+
+  .tarjeta-desc {
+    font-size: 0.76rem;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .tarjeta-medidas { font-size: 0.7rem; color: var(--ink-soft); }
+  .tarjeta-precio { font-size: 1rem; margin-top: 0.2rem; }
+  .tarjeta-badges { gap: 0.25rem; }
+  .badge-destacado, .badge-recomendado { font-size: 0.6rem; padding: 0.1rem 0.4rem; }
+
+  .franja-envios { width: calc(100% - 1.5rem); padding: 0.55rem 0.8rem 0.55rem 0.6rem; gap: 0.7rem; }
+  .envios-icono { width: 2.3rem; height: 2.3rem; font-size: 1.15rem; }
+  .envios-texto b { font-size: 0.95rem; }
+  .explora-categorias { padding-left: 0.75rem; padding-right: 0.75rem; }
+}

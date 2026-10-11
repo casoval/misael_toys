@@ -27,7 +27,7 @@
 
 <nav class="explora-categorias" aria-label="Categorías de juguetes">
   <span class="explora-titulo">Explora por categoría:</span>
-  {% for c in categorias %}<a href="{% url 'catalogo:categoria_detalle' c.slug %}" class="explora-link"{% if categoria_pagina and categoria_pagina.pk == c.pk %} aria-current="page"{% endif %}>{{ c.nombre }}</a>{% endfor %}
+  {% for c in categorias %}<a href="{% url 'catalogo:categoria_detalle' c.slug %}" class="explora-link" style="--c: {{ c.color_fondo }};"{% if categoria_pagina and categoria_pagina.pk == c.pk %} aria-current="page"{% endif %}>{{ c.nombre }}</a>{% endfor %}
 </nav>
 
 <div class="promo-banner">
@@ -51,8 +51,11 @@
 
 {% if config.envios_nacionales %}
 <div class="franja-envios">
-  <span aria-hidden="true">🚚</span>
-  <span><b>{{ config.texto_envios }}</b>{% if config.detalle_envios %} · {{ config.detalle_envios }}{% endif %}</span>
+  <span class="envios-icono" aria-hidden="true">🚚</span>
+  <span class="envios-texto">
+    <b>{{ config.texto_envios }}</b>
+    {% if config.detalle_envios %}<small>{{ config.detalle_envios }}</small>{% endif %}
+  </span>
 </div>
 {% endif %}
 

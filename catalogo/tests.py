@@ -2,7 +2,11 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from .models import ConfiguracionSitio, Producto
+from pathlib import Path
+
+from django.conf import settings
+
+from .models import Categoria, ConfiguracionSitio, Producto
 
 
 class ContactoTests(TestCase):
@@ -107,3 +111,41 @@ class ContactoTests(TestCase):
         r = self.client.get("/no-existe-abc/")
         self.assertEqual(r.status_code, 404)
         self.assertContains(r, 'id="wa-menu"', status_code=404)
+
+
+class PortadaTests(TestCase):
+    """Categorías, aviso de envíos y tarjetas en celular de la página principal."""
+
+    def setUp(self):
+        self.config = ConfiguracionSitio.get()
+        self.cat = Categoria.objects.create(nombre="Comida sensorial")
+        Producto.objects.create(nombre="Pizza fidget", precio=Decimal("95"), categoria=self.cat)
+
+    def test_explora_por_categoria_trae_el_color_de_cada_categoria(self):
+        r = self.client.get("/")
+        self.assertContains(r, 'class="explora-link"')
+        self.assertContains(r, f'style="--c: {self.cat.color_fondo};"')
+        self.assertContains(r, "Comida sensorial")
+
+    def test_aviso_de_envios_con_icono_y_detalle(self):
+        self.config.envios_nacionales = True
+        self.config.texto_envios = "Envíos a todo el país"
+        self.config.detalle_envios = "Por flota o encomienda"
+        self.config.save()
+        r = self.client.get("/")
+        self.assertContains(r, 'class="envios-icono"')
+        self.assertContains(r, "<b>Envíos a todo el país</b>")
+        self.assertContains(r, "<small>Por flota o encomienda</small>")
+
+    def test_sin_envios_no_hay_aviso(self):
+        self.config.envios_nacionales = False
+        self.config.save()
+        self.assertNotContains(self.client.get("/"), 'class="franja-envios"')
+
+    def test_el_css_pone_dos_productos_por_fila_en_celular(self):
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        bloque = css[css.index("@media (max-width: 599px)"):]
+        self.assertIn(".grid-productos { grid-template-columns: repeat(2, minmax(0, 1fr));", bloque)
+        # y las clases del aviso de envíos y de las categorías ya no están sin estilo
+        for clase in (".explora-link", ".explora-categorias", ".franja-envios", ".envios-icono"):
+            self.assertIn(clase, css)
