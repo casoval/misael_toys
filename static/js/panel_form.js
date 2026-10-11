@@ -227,6 +227,13 @@
     avisar();
   });
 
+  // En celular las opciones empiezan cerradas (menos scroll), salvo que ya tengan datos
+  const opciones = document.getElementById("opciones");
+  if (opciones && window.matchMedia && window.matchMedia("(max-width: 999px)").matches) {
+    const conDatos = [...opciones.querySelectorAll("input[type=text], textarea")].some((i) => i.value.trim());
+    if (!conDatos) opciones.open = false;
+  }
+
   previas.forEach(agregarFila);
   contadores();
 })();

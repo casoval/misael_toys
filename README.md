@@ -68,6 +68,10 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   categoría, por producto, con fechas de vigencia, acumulables o no. Las reglas
   no acumulables no se suman: se aplica solo la que más descuenta. Además cada
   venta/cotización admite un descuento adicional manual en Bs.
+- **Diseño compacto**: el panel usa todo el ancho de la pantalla. En Vender/Cotizar, en pantallas
+  grandes los productos van a la izquierda y el detalle con el total a la derecha (siempre
+  visible); en celular, el total queda fijo abajo en una barra delgada y las opciones
+  (descuento, cliente, notas) empiezan cerradas para hacer menos scroll.
 - **Filtros** (Stock, Vender y Cotizar): los mismos que se van generando en el catálogo público —
   categorías y atributos como Material, Edad o Color (los que tengan «mostrar como filtro»)— más
   precio, «hay en [lugar]» y «solo con stock». Se aplican al instante, sin recargar. Dentro de un

@@ -1,57 +1,57 @@
-{# Formulario compartido de venta y cotización. `tipo` = "venta" | "cotizacion" #}
+{% comment %}Formulario compartido de venta y cotización (tipo = "venta" | "cotizacion"). En pantallas grandes: productos a la izquierda y detalle + total a la derecha.{% endcomment %}
 {% if errores %}<div class="p-msg error"><ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
 
-<form id="form-lineas" method="post" data-tipo="{{ tipo }}"
+<form id="form-lineas" class="p-venta" method="post" data-tipo="{{ tipo }}"
       hx-post="{% url 'panel:calcular' %}" hx-trigger="input delay:300ms, change, load" hx-target="#resumen" hx-swap="innerHTML">
   {% csrf_token %}
 
-  <div class="p-card">
-    <div class="p-vistabar">
-      <h2>1. Toca los productos</h2>
-      {% include "panel/_toggle_vista.html" %}
+  <section class="p-col-productos">
+    <div class="p-card">
+      {% include "panel/_filtros.html" %}
+      <div id="picker-aviso" class="p-aviso" aria-live="polite"></div>
+      <div id="picker" class="p-productos vista-tarjetas" data-vista-contenedor></div>
     </div>
-    {% include "panel/_filtros.html" %}
-    <div id="picker-aviso" class="p-aviso" aria-live="polite"></div>
-    <div id="picker" class="p-productos vista-tarjetas" data-vista-contenedor></div>
-  </div>
+  </section>
 
-  <div class="p-card">
-    <h2>2. Detalle {% if tipo == "venta" %}de la venta{% else %}de la cotización{% endif %}</h2>
-    <div id="filas"></div>
-    <button type="button" id="agregar-fila" class="p-btn p-btn-sec">+ Agregar con lista desplegable</button>
-  </div>
+  <aside class="p-col-detalle">
+    <div class="p-card">
+      <h2>{% if tipo == "venta" %}Detalle de la venta{% else %}Detalle de la cotización{% endif %}</h2>
+      <div id="filas"></div>
+      <button type="button" id="agregar-fila" class="p-btn p-btn-sec">+ Agregar con lista desplegable</button>
+    </div>
 
-  <div class="p-card">
-    <h2>3. Descuentos</h2>
-    <label class="p-check"><input type="checkbox" name="aplicar_reglas" {% if aplicar_reglas %}checked{% endif %}>
-      Aplicar promociones por cantidad automáticamente</label>
-    <label>Descuento adicional (Bs.) <small class="p-soft">opcional</small>
-      <input type="text" name="descuento_extra" inputmode="numeric" value="{{ post.descuento_extra }}" placeholder="0"></label>
-  </div>
+    <details class="p-card p-opciones" id="opciones" open>
+      <summary>Descuento, cliente y notas</summary>
+      <div class="p-opciones-in">
+        <label class="p-check"><input type="checkbox" name="aplicar_reglas" {% if aplicar_reglas %}checked{% endif %}>
+          Aplicar promociones por cantidad</label>
+        <div class="p-dos">
+          <label>Descuento adicional (Bs.)
+            <input type="text" name="descuento_extra" inputmode="numeric" value="{{ post.descuento_extra }}" placeholder="0"></label>
+          <label>Cliente <input type="text" name="cliente" maxlength="120" value="{{ post.cliente }}" placeholder="opcional"></label>
+        </div>
+        {% if tipo == "cotizacion" %}
+        <label>Válida por (días) <input type="number" name="validez_dias" min="1" value="{{ post.validez_dias|default:'7' }}" inputmode="numeric"></label>
+        {% endif %}
+        <label>Observaciones <textarea name="observaciones" rows="2">{{ post.observaciones }}</textarea></label>
+      </div>
+    </details>
 
-  <div class="p-card">
-    <h2>4. Datos</h2>
-    <label>Cliente <small class="p-soft">opcional</small> <input type="text" name="cliente" maxlength="120" value="{{ post.cliente }}"></label>
-    {% if tipo == "cotizacion" %}
-    <label>Válida por (días) <input type="number" name="validez_dias" min="1" value="{{ post.validez_dias|default:'7' }}" inputmode="numeric"></label>
-    {% endif %}
-    <label>Observaciones <textarea name="observaciones" rows="2">{{ post.observaciones }}</textarea></label>
-  </div>
-
-  <div class="p-card p-sticky">
-    <div id="resumen"></div>
-    <button class="p-btn p-btn-grande" type="submit">{% if tipo == "venta" %}Registrar venta{% else %}Crear cotización{% endif %}</button>
-  </div>
+    <div class="p-totalbar">
+      <div id="resumen"></div>
+      <button class="p-btn p-btn-total" type="submit">{% if tipo == "venta" %}Registrar venta{% else %}Crear cotización{% endif %}</button>
+    </div>
+  </aside>
 </form>
 
 <template id="tpl-fila">
   <div class="p-fila-form">
     <span class="f-foto"><img alt="" hidden></span>
     <label class="f-prod">Producto <select name="producto"></select></label>
-    {% if tipo == "venta" %}<label class="f-ubic">De dónde sale <select name="ubicacion"></select></label>{% endif %}
-    <label class="f-cant">Cant. <input type="number" name="cantidad" min="1" value="1" inputmode="numeric"></label>
-    <label class="f-precio">Precio c/u (Bs.) <input type="text" name="precio" inputmode="numeric"></label>
     <button type="button" class="p-quitar" title="Quitar" aria-label="Quitar fila">✕</button>
+    <label class="f-cant">Cantidad <input type="number" name="cantidad" min="1" value="1" inputmode="numeric"></label>
+    {% if tipo == "venta" %}<label class="f-ubic">De dónde sale <select name="ubicacion"></select></label>{% endif %}
+    <label class="f-precio">Precio c/u (Bs.) <input type="text" name="precio" inputmode="numeric"></label>
     <small class="f-aviso"></small>
   </div>
 </template>

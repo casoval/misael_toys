@@ -113,5 +113,10 @@
   entradaQ.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
   [entradaMin, entradaMax].forEach((i) => i.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); }));
 
+  // El panel "Más filtros" se cierra al tocar en cualquier otro lado
+  const fmas = barra.querySelector(".p-fmas");
+  document.addEventListener("click", (e) => { if (fmas && fmas.open && !fmas.contains(e.target)) fmas.open = false; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && fmas) fmas.open = false; });
+
   aplicarFiltros();
 })();

@@ -1,9 +1,11 @@
-<div class="p-resumen">
-  <div class="fila"><span>Subtotal ({{ t.unidades }} unidad{{ t.unidades|pluralize:"es" }})</span><b>Bs. {{ t.subtotal|floatformat:0 }}</b></div>
-  {% for a in t.aplicadas %}
-  <div class="fila desc"><span>🏷 {{ a.nombre }} ({{ a.porcentaje|floatformat:"-2" }}%)</span><b>− Bs. {{ a.monto|floatformat:0 }}</b></div>
-  {% endfor %}
-  {% if t.descuento_extra %}<div class="fila desc"><span>Descuento adicional</span><b>− Bs. {{ t.descuento_extra|floatformat:0 }}</b></div>{% endif %}
-  <div class="fila total"><span>Total</span><b>Bs. {{ t.total|floatformat:0 }}</b></div>
-  {% if t.sugerencia %}<p class="sug">💡 {{ t.sugerencia }}</p>{% endif %}
+{# Resumen compacto del total (se actualiza solo mientras se arma la venta/cotización) #}
+<div class="rc">
+  <div class="rc-total"><small>Total</small><b>Bs. {{ t.total|floatformat:0 }}</b></div>
+  <div class="rc-info">
+    <span>{{ t.unidades }} unidad{{ t.unidades|pluralize:"es" }}</span>
+    {% if t.aplicadas or t.descuento_extra %}<span>Subtotal Bs. {{ t.subtotal|floatformat:0 }}</span>{% endif %}
+    {% for a in t.aplicadas %}<span class="desc">{{ a.nombre }} ({{ a.porcentaje|floatformat:"-2" }}%) − Bs. {{ a.monto|floatformat:0 }}</span>{% endfor %}
+    {% if t.descuento_extra %}<span class="desc">Desc. adicional − Bs. {{ t.descuento_extra|floatformat:0 }}</span>{% endif %}
+  </div>
+  {% if t.sugerencia %}<div class="rc-sug">💡 {{ t.sugerencia }}</div>{% endif %}
 </div>

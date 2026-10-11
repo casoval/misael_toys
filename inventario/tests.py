@@ -606,3 +606,23 @@ class EnlacesPaginaPrincipalTests(Base):
         r = self.client.get(reverse("panel:login"))
         self.assertContains(r, "Volver a la página principal")
         self.assertContains(r, 'href="/"')
+
+
+class PlantillasLimpiasTests(Base):
+    def test_ninguna_pantalla_muestra_codigo_de_plantilla(self):
+        """Un comentario {# #} de varias líneas se vería escrito en pantalla: que no vuelva a pasar."""
+        servicios.registrar_ingreso(self.p1, self.casa, 5, self.admin)
+        v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1)])
+        cot = servicios.crear_cotizacion(self.ana, [self.item(self.p1, None, 1)])
+        self.client.login(username="admin", password="x")
+        urls = [reverse(n) for n in ("panel:stock", "panel:venta_nueva", "panel:cotizacion_nueva", "panel:ventas",
+                                     "panel:cotizaciones", "panel:usuarios")]
+        urls += [reverse("panel:stock_producto", args=[self.p1.pk]), reverse("panel:venta_detalle", args=[v.pk]),
+                 reverse("panel:cotizacion_detalle", args=[cot.pk])]
+        for url in urls:
+            html = self.client.get(url).content.decode()
+            self.assertNotIn("{#", html, url)
+            self.assertNotIn("#}", html, url)
+            self.assertNotIn("{%", html, url)
+        self.client.logout()
+        self.assertNotIn("{#", self.client.get(reverse("panel:login")).content.decode())

@@ -13,25 +13,29 @@
 <body class="panel">
   <header class="p-top">
     <div class="p-top-in">
-      <a class="p-marca" href="{% url 'panel:stock' %}">Misael Toys <small>panel</small></a>
-      <a class="p-tienda" href="{% url 'catalogo:home' %}">← Página principal</a>
+      <a class="p-marca" href="{% url 'panel:stock' %}">Misael Toys<small>panel</small></a>
+
       {% if user.is_authenticated %}
       {% with u=request.resolver_match.url_name %}
-      <nav class="p-nav">
-        <a href="{% url 'panel:stock' %}" {% if u == 'stock' or u == 'stock_producto' %}class="on"{% endif %}>Stock</a>
-        <a href="{% url 'panel:venta_nueva' %}" {% if u == 'venta_nueva' %}class="on"{% endif %}>Vender</a>
-        <a href="{% url 'panel:ventas' %}" {% if u == 'ventas' or u == 'venta_detalle' %}class="on"{% endif %}>Ventas</a>
-        <a href="{% url 'panel:cotizacion_nueva' %}" {% if u == 'cotizacion_nueva' %}class="on"{% endif %}>Cotizar</a>
-        <a href="{% url 'panel:cotizaciones' %}" {% if u == 'cotizaciones' or u == 'cotizacion_detalle' %}class="on"{% endif %}>Cotizaciones</a>
-        {% if user.is_staff %}<a href="{% url 'panel:usuarios' %}" {% if u == 'usuarios' %}class="on"{% endif %}>Usuarios</a>{% endif %}
+      <nav class="p-nav" aria-label="Secciones del panel">
+        <a style="--c:#1FB6C9" href="{% url 'panel:stock' %}" {% if u == 'stock' or u == 'stock_producto' %}class="on"{% endif %}>Stock</a>
+        <a style="--c:#5FBF57" href="{% url 'panel:venta_nueva' %}" {% if u == 'venta_nueva' %}class="on"{% endif %}>Vender</a>
+        <a style="--c:#2F9BE0" href="{% url 'panel:ventas' %}" {% if u == 'ventas' or u == 'venta_detalle' %}class="on"{% endif %}>Ventas</a>
+        <a style="--c:#8B5CF6" href="{% url 'panel:cotizacion_nueva' %}" {% if u == 'cotizacion_nueva' %}class="on"{% endif %}>Cotizar</a>
+        <a style="--c:#F0609B" href="{% url 'panel:cotizaciones' %}" {% if u == 'cotizaciones' or u == 'cotizacion_detalle' %}class="on"{% endif %}>Cotizaciones</a>
+        {% if user.is_staff %}<a style="--c:#FFB238;--t:#3a2a00" href="{% url 'panel:usuarios' %}" {% if u == 'usuarios' %}class="on"{% endif %}>Usuarios</a>{% endif %}
       </nav>
       {% endwith %}
-      <form method="post" action="{% url 'panel:logout' %}" class="p-salir">{% csrf_token %}
-        <span>{{ user.username }}</span>
-        {% if user.is_staff %}<a href="/admin/">Admin</a>{% endif %}
-        <button type="submit">Salir</button>
-      </form>
       {% endif %}
+
+      <div class="p-der">
+        <a class="p-tienda" href="{% url 'catalogo:home' %}"><span class="p-largo">← Página principal</span><span class="p-corto">← Inicio</span></a>
+        {% if user.is_authenticated %}
+        <span class="p-user">{{ user.username }}</span>
+        {% if user.is_staff %}<a class="p-admin" href="/admin/">Admin</a>{% endif %}
+        <form method="post" action="{% url 'panel:logout' %}" class="p-salir">{% csrf_token %}<button type="submit">Salir</button></form>
+        {% endif %}
+      </div>
     </div>
   </header>
 

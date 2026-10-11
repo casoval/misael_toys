@@ -2,7 +2,7 @@
 {% load static %}
 {% block titulo %}Stock{% endblock %}
 {% block contenido %}
-<h1>Stock</h1>
+<div class="p-titulo"><h1>Stock</h1></div>
 {% include "panel/_filtros.html" with unidades=True %}
 
 {% if not ubicaciones %}
@@ -13,9 +13,6 @@
 <div class="p-msg warning">⚠ Hay <b>{{ por_cubrir }}</b> unidad{{ por_cubrir|pluralize:"es" }} vendida{{ por_cubrir|pluralize }} sin stock registrado (aparecen en rojo, con número negativo). Se compensan solas cuando agregues el stock, o corrígelas si el producto ya estaba físicamente.</div>
 {% endif %}
 
-<div class="p-vistabar p-vistabar-fin">
-  {% include "panel/_toggle_vista.html" %}
-</div>
 
 <div class="p-productos vista-tarjetas" data-vista-contenedor>
 {% for f in filas %}

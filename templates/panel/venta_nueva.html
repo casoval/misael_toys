@@ -2,8 +2,7 @@
 {% load static %}
 {% block titulo %}Nueva venta{% endblock %}
 {% block contenido %}
-<h1>Nueva venta</h1>
-<p class="p-soft">Toca la foto del producto para agregarlo (otra vez para sumar uno) y usa el botón <b>−</b> de la tarjeta para quitar. Siempre se puede vender, haya o no stock registrado: si falta, queda anotado como «por cubrir».</p>
+<div class="p-titulo"><h1>Nueva venta</h1><p class="p-soft">Toca una foto para agregar (otra vez: +1; botón − para quitar). Se puede vender aunque no haya stock: queda anotado como «por cubrir».</p></div>
 {% include "panel/_form_lineas.html" %}
 {% endblock %}
 {% block scripts %}<script src="{% static 'js/panel_form.js' %}"></script><script src="{% static 'js/panel_vista.js' %}"></script>{% endblock %}
