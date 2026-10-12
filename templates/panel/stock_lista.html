@@ -16,16 +16,14 @@
 
 <div class="p-productos vista-tarjetas" data-vista-contenedor>
 {% for f in filas %}
-  <a class="p-prod {% if f.total <= 0 %}agotado{% endif %}" href="{% url 'panel:stock_producto' f.producto.pk %}" data-nombre="{{ f.producto.nombre }}"
+  <a class="p-prod {% if f.total <= 0 %}agotado{% endif %}" href="{% url 'panel:stock_producto' f.producto.pk %}" data-nombre="{{ f.producto.nombre }}" data-codigo="{{ f.producto.codigo|default:'' }}"
      data-categoria="{{ f.producto.categoria_id|default:'' }}" data-valores="{{ f.valores }}"
      data-precio="{{ f.precio|floatformat:0 }}" data-total="{{ f.total }}"{% for l in f.lugares %} data-u{{ l.ubicacion.pk }}="{{ l.cantidad }}"{% endfor %}>
     <span class="p-prod-foto">{% if f.foto %}<img src="{{ f.foto }}" alt="" loading="lazy">{% else %}<i class="p-sinfoto"></i>{% endif %}</span>
     <b class="p-badge {% if f.total <= 0 %}cero{% endif %}">{{ f.total }}</b>
     <span class="p-prod-cuerpo">
-      {% if f.producto.categoria %}<span class="p-prod-cat p-x" style="background:{{ f.producto.categoria.color_fondo }};">{{ f.producto.categoria.nombre }}</span>{% endif %}
+      {% if f.producto.codigo %}<span class="p-prod-cod">{{ f.producto.codigo }}</span>{% endif %}
       <span class="p-prod-nombre">{{ f.producto.nombre }}</span>
-      {% if f.producto.descripcion_corta %}<span class="p-prod-desc p-x">{{ f.producto.descripcion_corta }}</span>{% endif %}
-      {% if f.producto.medidas_resumen %}<span class="p-prod-med p-x">📏 {{ f.producto.medidas_resumen }}</span>{% endif %}
       <span class="p-prod-precio">Bs. {{ f.producto.precio|floatformat:0 }}</span>
       <span class="p-prod-lugares">
         {% for l in f.lugares %}{% if l.cantidad %}<span {% if l.cantidad < 0 %}class="neg"{% endif %}>{{ l.ubicacion.nombre }} <b>{{ l.cantidad }}</b></span>{% endif %}{% endfor %}

@@ -1,6 +1,6 @@
 import re
 
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils.text import slugify
 from django.urls import reverse
 
@@ -135,6 +135,12 @@ class Filamento(models.Model):
 
 class Producto(models.Model):
     nombre = models.CharField(max_length=150)
+    codigo = models.CharField(
+        "Código interno", max_length=20, unique=True, null=True, blank=True,
+        help_text="Número de ítem para control interno (NO se muestra al público). Si lo dejas vacío "
+                   "se genera solo: J001, J002, J003… También puedes escribir el que quieras "
+                   "(ej. J025 o KIT-01); no se puede repetir.",
+    )
     slug = models.SlugField(max_length=170, unique=True, blank=True)
     categoria = models.ForeignKey(
         Categoria, on_delete=models.SET_NULL, null=True, blank=True, related_name="productos"
@@ -216,6 +222,31 @@ class Producto(models.Model):
     def __str__(self):
         return self.nombre
 
+    # --- Código interno (J001, J002…) ---
+    PREFIJO_CODIGO = "J"
+
+    @classmethod
+    def siguiente_codigo(cls, excluir_pk=None):
+        """El siguiente código libre: J001, J002… (3 dígitos; pasa a J1000 sin problema).
+        Solo cuenta los códigos con la forma J + número: uno manual como KIT-01 no interfiere.
+        `excluir_pk`: el producto que se está editando no cuenta su propio código anterior
+        (así, si borras el código del último producto, vuelve a recibir el mismo y no se pierde un número)."""
+        usados = cls.objects.filter(codigo__regex=rf"^{cls.PREFIJO_CODIGO}[0-9]+$").values_list("codigo", flat=True)
+        if excluir_pk:
+            usados = usados.exclude(pk=excluir_pk)
+        n = max((int(c[len(cls.PREFIJO_CODIGO):]) for c in usados), default=0) + 1
+        return f"{cls.PREFIJO_CODIGO}{n:03d}"
+
+    @staticmethod
+    def _normalizar_codigo(codigo):
+        """Sin espacios y en mayúsculas ('j001 ' -> 'J001'); vacío = None."""
+        return (codigo or "").strip().upper() or None
+
+    def clean(self):
+        super().clean()
+        # Se normaliza antes de validar que no esté repetido (así 'j001' tampoco duplica 'J001')
+        self.codigo = self._normalizar_codigo(self.codigo)
+
     def save(self, *args, **kwargs):
         if not self.slug:
             base_slug = slugify(self.nombre)
@@ -225,7 +256,26 @@ class Producto(models.Model):
                 i += 1
                 slug = f"{base_slug}-{i}"
             self.slug = slug
-        super().save(*args, **kwargs)
+
+        campos = kwargs.get("update_fields")
+        toca_codigo = campos is None or "codigo" in campos
+        generado = False
+        if toca_codigo:
+            self.codigo = self._normalizar_codigo(self.codigo)
+            if not self.codigo:
+                self.codigo = self.siguiente_codigo(excluir_pk=self.pk)
+                generado = True
+
+        # Si dos productos se crean a la vez y chocan en el código generado, se reintenta con el siguiente.
+        for intento in range(5):
+            try:
+                with transaction.atomic():
+                    super().save(*args, **kwargs)
+                return
+            except IntegrityError:
+                if not generado or intento == 4:
+                    raise
+                self.codigo = self.siguiente_codigo(excluir_pk=self.pk)
 
     def get_absolute_url(self):
         return reverse("catalogo:producto_detalle", kwargs={"slug": self.slug})

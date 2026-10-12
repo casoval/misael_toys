@@ -58,7 +58,7 @@
     tarjetas.forEach((t) => {
       const d = t.dataset;
       let ok = true;
-      if (q && !norm(d.nombre).includes(q)) ok = false;
+      if (q && !(norm(d.nombre).includes(q) || norm(d.codigo).includes(q))) ok = false;
       if (ok && categoria && d.categoria !== categoria) ok = false;
       if (ok && listaGrupos.length) {
         const suyos = d.valores || "";

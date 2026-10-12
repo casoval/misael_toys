@@ -2,7 +2,7 @@
 {% block titulo %}{{ producto.nombre }}{% endblock %}
 {% block contenido %}
 <p><a href="{% url 'panel:stock' %}">← Volver al stock</a></p>
-<h1>{{ producto.nombre }}</h1>
+<h1>{% if producto.codigo %}<span class="p-tag p-tag-cod">{{ producto.codigo }}</span> {% endif %}{{ producto.nombre }}</h1>
 <p class="p-soft">Precio de lista: <b>Bs. {{ producto.precio|floatformat:0 }}</b>{% if producto.categoria %} · {{ producto.categoria }}{% endif %}</p>
 
 <div class="p-card">

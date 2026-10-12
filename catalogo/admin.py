@@ -46,21 +46,21 @@ class ImagenProductoInline(admin.TabularInline):
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
     list_display = (
-        "miniatura", "nombre", "categoria", "precio", "precio_sugerido_col",
+        "miniatura", "nombre", "codigo", "categoria", "precio", "precio_sugerido_col",
         "peso_col", "horas_col", "total_likes", "disponible", "destacado",
         "recomendado_por_terapeutas", "orden",
     )
     ordering = ("-total_likes",)
     list_editable = ("precio", "disponible", "destacado", "recomendado_por_terapeutas", "orden")
     list_filter = ("categoria", "disponible", "destacado", "recomendado_por_terapeutas")
-    search_fields = ("nombre", "descripcion")
+    search_fields = ("nombre", "codigo", "descripcion")
     prepopulated_fields = {"slug": ("nombre",)}
     filter_horizontal = ("atributos",)
     inlines = [ImagenProductoInline]
     readonly_fields = ("precio_sugerido_detalle",)
     fieldsets = (
         (None, {
-            "fields": ("nombre", "slug", "categoria", "precio")
+            "fields": ("nombre", "codigo", "slug", "categoria", "precio")
         }),
         ("Descripción", {
             "fields": ("descripcion_corta", "descripcion")
@@ -83,6 +83,12 @@ class ProductoAdmin(admin.ModelAdmin):
             "fields": ("disponible", "destacado", "recomendado_por_terapeutas", "orden")
         }),
     )
+
+    def get_changeform_initial_data(self, request):
+        # Al crear un producto nuevo, el código sugerido ya aparece escrito (se puede cambiar o borrar)
+        datos = super().get_changeform_initial_data(request)
+        datos.setdefault("codigo", Producto.siguiente_codigo())
+        return datos
 
     def get_queryset(self, request):
         # Precarga las imágenes para que la miniatura no dispare una consulta

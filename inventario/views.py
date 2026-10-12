@@ -107,8 +107,7 @@ def stock_lista(request):
     se aplican al instante en el navegador (ver panel_vista.js)."""
     ubicaciones = list(Ubicacion.objects.filter(activa=True))
     productos = (
-        Producto.objects.select_related("categoria").prefetch_related("stocks", "imagenes", "atributos")
-        .order_by("nombre")
+        Producto.objects.prefetch_related("stocks", "imagenes", "atributos").order_by("nombre")
     )
     ids_ub = [u.pk for u in ubicaciones]
     filas = []
@@ -210,8 +209,7 @@ def _datos_productos():
     0 o negativo), para las tarjetas y el selector del formulario."""
     ubicaciones = list(Ubicacion.objects.filter(activa=True))
     ids = {u.pk for u in ubicaciones}
-    productos = (Producto.objects.select_related("categoria")
-                 .prefetch_related("stocks", "imagenes", "atributos").order_by("nombre"))
+    productos = Producto.objects.prefetch_related("stocks", "imagenes", "atributos").order_by("nombre")
     datos = []
     for p in productos:
         stock = {str(u.pk): 0 for u in ubicaciones}
@@ -222,10 +220,7 @@ def _datos_productos():
                       "precio": str(p.precio.quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
                       "stock": stock, "total": sum(stock.values()), "foto": foto_panel(p),
                       "categoria": str(p.categoria_id or ""), "valores": [v.pk for v in p.atributos.all()],
-                      # Para mostrar en la tarjeta (celular): categoría con su color, descripción y medidas
-                      "cat": p.categoria.nombre if p.categoria_id else "",
-                      "cat_color": p.categoria.color_fondo if p.categoria_id else "",
-                      "desc": p.descripcion_corta, "medidas": p.medidas_resumen})
+                      "codigo": p.codigo or ""})
     return datos, ubicaciones
 
 

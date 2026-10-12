@@ -43,6 +43,7 @@
     b.tabIndex = 0;
     b.dataset.id = p.id;
     b.dataset.nombre = p.nombre;
+    b.dataset.codigo = p.codigo;
     // Datos para los filtros (categoría, atributos, precio, stock total y por lugar)
     b.dataset.categoria = p.categoria;
     b.dataset.valores = " " + p.valores.join(" ") + " ";
@@ -58,10 +59,8 @@
       '<b class="p-badge' + (p.total <= 0 ? " cero" : "") + '">' + p.total + "</b>" +
       '<span class="p-enc" hidden><button type="button" class="p-menos" aria-label="Quitar uno">−</button><b></b></span>' +
       '<span class="p-prod-cuerpo">' +
-      (p.cat ? '<span class="p-prod-cat p-x" style="background:' + esc(p.cat_color) + ';">' + esc(p.cat) + "</span>" : "") +
+      (p.codigo ? '<span class="p-prod-cod">' + esc(p.codigo) + "</span>" : "") +
       '<span class="p-prod-nombre">' + esc(p.nombre) + "</span>" +
-      (p.desc ? '<span class="p-prod-desc p-x">' + esc(p.desc) + "</span>" : "") +
-      (p.medidas ? '<span class="p-prod-med p-x">📏 ' + esc(p.medidas) + "</span>" : "") +
       '<span class="p-prod-precio">Bs. ' + esc(p.precio) + "</span>" +
       '<span class="p-prod-lugares">' + (lugares || '<span class="sin">Sin stock</span>') + "</span></span>";
     b.addEventListener("click", (e) => {
@@ -194,7 +193,7 @@
     productos.forEach((p) => {
       const o = document.createElement("option");
       o.value = p.id;
-      o.textContent = p.nombre + (esVenta ? "  ·  hay " + p.total : "");
+      o.textContent = (p.codigo ? p.codigo + " · " : "") + p.nombre + (esVenta ? "  ·  hay " + p.total : "");
       selProd.appendChild(o);
     });
 

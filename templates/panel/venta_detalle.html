@@ -10,7 +10,7 @@
 <div class="p-card">
   {% for it in items %}
   <div class="p-linea">
-    <b>{{ it.cantidad }} × {{ it.producto.nombre }}</b>
+    <b>{{ it.cantidad }} × {% if it.producto.codigo %}<span class="p-tag p-tag-cod">{{ it.producto.codigo }}</span> {% endif %}{{ it.producto.nombre }}</b>
     <span>Bs. {{ it.precio_unitario|floatformat:0 }} c/u {% if it.precio_unitario != it.precio_lista %}<small class="p-soft">(lista: {{ it.precio_lista|floatformat:0 }})</small>{% endif %}</span>
     <span class="p-soft">{% if it.ubicacion %}salió de {{ it.ubicacion }}{% else %}sin descontar de ningún lugar{% endif %}</span>
     {% if it.faltante %}<span class="p-tag warn">sin stock: {{ it.faltante }}</span>{% endif %}

@@ -1,7 +1,7 @@
 {# Barra de filtros compartida (Stock, Vender, Cotizar). Se aplican al instante en el navegador. #}
 <div class="p-fbar" data-filtros data-f-unidades="{{ unidades|yesno:'1,0' }}">
   <div class="p-frow1">
-    <input type="search" class="p-buscar" placeholder="Buscar producto…" data-f-q autocomplete="off">
+    <input type="search" class="p-buscar" placeholder="Buscar por nombre o código…" data-f-q autocomplete="off">
     {% if f_categorias %}
     <div class="p-fcats" role="group" aria-label="Categoría">
       <button type="button" class="p-fchip on" data-f-cat="">Todas</button>
