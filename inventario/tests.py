@@ -628,8 +628,8 @@ class PlantillasLimpiasTests(Base):
         self.assertNotIn("{#", self.client.get(reverse("panel:login")).content.decode())
 
 
-class TarjetasCelularTests(Base):
-    """Las tarjetas llevan categoría, descripción y medidas (se muestran en celular, como en la página principal)."""
+class TarjetasPanelTests(Base):
+    """Las tarjetas del panel son compactas: foto, código, nombre, precio y stock (sin descripción)."""
 
     def setUp(self):
         super().setUp()
@@ -638,39 +638,190 @@ class TarjetasCelularTests(Base):
         self.p1.save()
         self.client.login(username="ana", password="x")
 
-    def test_stock_trae_categoria_descripcion_y_medidas(self):
-        r = self.client.get(reverse("panel:stock"))
-        self.assertContains(r, 'class="p-prod-cat p-x"')
-        self.assertContains(r, "Táctil")
-        self.assertContains(r, "Cubo con texturas para explorar con las manos")
-        self.assertContains(r, "8 × 8 × 8 cm")
+    def test_el_panel_no_muestra_descripcion_ni_medidas(self):
+        for nombre in ("panel:stock", "panel:venta_nueva", "panel:cotizacion_nueva"):
+            r = self.client.get(reverse(nombre))
+            self.assertNotContains(r, "Cubo con texturas para explorar con las manos", msg_prefix=nombre)
+            self.assertNotContains(r, "8 × 8 × 8 cm", msg_prefix=nombre)
+            self.assertNotContains(r, "p-prod-desc", msg_prefix=nombre)
 
-    def test_selector_de_venta_y_cotizacion_trae_los_mismos_datos(self):
+    def test_las_tarjetas_muestran_el_codigo(self):
+        r = self.client.get(reverse("panel:stock"))
+        self.assertContains(r, f'<span class="p-prod-cod">{self.p1.codigo}</span>')
+        self.assertContains(r, f'data-codigo="{self.p1.codigo}"')
+
+    def test_el_selector_trae_el_codigo_y_no_la_descripcion(self):
         for nombre in ("panel:venta_nueva", "panel:cotizacion_nueva"):
             r = self.client.get(reverse(nombre))
             datos = {p["nombre"]: p for p in r.context["productos_json"]}
-            self.assertEqual(datos["Pop it"]["cat"], "Táctil")
-            self.assertTrue(datos["Pop it"]["cat_color"].startswith("#"))
-            self.assertEqual(datos["Pop it"]["desc"], "Cubo con texturas para explorar con las manos")
-            self.assertEqual(datos["Pop it"]["medidas"], "8 × 8 × 8 cm")
-            self.assertEqual(datos["Cubo"]["cat"], "")
-            self.assertEqual(datos["Cubo"]["medidas"], "")
+            self.assertEqual(datos["Pop it"]["codigo"], self.p1.codigo)
+            self.assertNotIn("desc", datos["Pop it"])
+            self.assertNotIn("medidas", datos["Pop it"])
+
+    def test_el_css_vuelve_a_tres_tarjetas_por_fila_en_celular(self):
+        from pathlib import Path
+        from django.conf import settings
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "panel.css").read_text(encoding="utf-8")
+        self.assertIn(".p-productos.vista-tarjetas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));", css)
+
+    def test_los_detalles_muestran_el_codigo(self):
+        servicios.registrar_ingreso(self.p1, self.casa, 5, self.admin)
+        v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1)])
+        cot = servicios.crear_cotizacion(self.ana, [self.item(self.p1, None, 1)])
+        for url in (reverse("panel:stock_producto", args=[self.p1.pk]), reverse("panel:venta_detalle", args=[v.pk]),
+                    reverse("panel:cotizacion_detalle", args=[cot.pk])):
+            self.assertContains(self.client.get(url), self.p1.codigo, msg_prefix=url)
+
+    def test_el_recibo_pdf_incluye_el_codigo(self):
+        servicios.registrar_ingreso(self.p1, self.casa, 5, self.admin)
+        v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1)])
+        from .pdf import generar_pdf_recibo
+        self.assertTrue(generar_pdf_recibo(v).startswith(b"%PDF"))
 
     def test_el_selector_sigue_sin_consultas_por_producto(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
-        self.client.get(reverse("panel:venta_nueva"))
-        with CaptureQueriesContext(connection) as pocas:
-            self.client.get(reverse("panel:venta_nueva"))
-        for i in range(10):
-            Producto.objects.create(nombre=f"Más {i}", precio=D("5"), categoria=self.cat, descripcion_corta="x")
-        with CaptureQueriesContext(connection) as muchas:
-            self.client.get(reverse("panel:venta_nueva"))
-        self.assertEqual(len(pocas), len(muchas))
-        self.client.get(reverse("panel:stock"))
-        with CaptureQueriesContext(connection) as stock_muchas:
-            self.client.get(reverse("panel:stock"))
-        Producto.objects.create(nombre="Uno más", precio=D("5"), categoria=self.cat)
-        with CaptureQueriesContext(connection) as stock_mas:
-            self.client.get(reverse("panel:stock"))
-        self.assertEqual(len(stock_muchas), len(stock_mas))
+        for url in ("panel:venta_nueva", "panel:stock"):
+            self.client.get(reverse(url))
+            with CaptureQueriesContext(connection) as pocas:
+                self.client.get(reverse(url))
+            for i in range(8):
+                Producto.objects.create(nombre=f"Más {url} {i}", precio=D("5"), categoria=self.cat)
+            with CaptureQueriesContext(connection) as muchas:
+                self.client.get(reverse(url))
+            self.assertEqual(len(pocas), len(muchas), url)
+
+
+class CssValidoTests(Base):
+    def test_las_llaves_de_los_css_estan_balanceadas(self):
+        """Una '}' suelta hace que el navegador descarte la regla siguiente (ya pasó una vez)."""
+        import re
+        from pathlib import Path
+        from django.conf import settings
+        for nombre in ("panel.css", "style.css"):
+            css = (Path(settings.BASE_DIR) / "static" / "css" / nombre).read_text(encoding="utf-8")
+            css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+            css = re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', "", css)  # textos entre comillas
+            profundidad = 0
+            for i, c in enumerate(css):
+                profundidad += (c == "{") - (c == "}")
+                self.assertGreaterEqual(profundidad, 0, f"{nombre}: '}}' sobrante cerca de: {css[max(0, i - 60):i + 1]!r}")
+            self.assertEqual(profundidad, 0, f"{nombre}: falta cerrar {profundidad} llave(s)")
+
+
+def _png(color, ancho=300, alto=200):
+    """Una imagen de prueba (no cuadrada, para comprobar el recorte)."""
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("RGB", (ancho, alto), color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+class FotosEnCotizacionTests(Base):
+    """La cotización lleva una foto pequeña de cada producto como referencia para el cliente."""
+
+    def setUp(self):
+        import tempfile
+        from django.test import override_settings
+        super().setUp()
+        self._media = tempfile.mkdtemp()
+        self._ov = override_settings(MEDIA_ROOT=self._media)
+        self._ov.enable()
+        self.addCleanup(self._ov.disable)
+        self.addCleanup(__import__("shutil").rmtree, self._media, True)
+
+    def con_foto(self, producto, color, **kw):
+        from django.core.files.base import ContentFile
+        from catalogo.models import ImagenProducto
+        ImagenProducto.objects.create(producto=producto, imagen=ContentFile(_png(color, **kw), name=f"{producto.slug}.png"))
+
+    def imagenes_base(self):
+        """Imágenes que tiene un PDF sin fotos de productos: solo el logo (un PNG con transparencia
+        cuenta como 2 objetos dentro del PDF). Se mide en vez de suponerlo, por si cambias el logo."""
+        sin_foto = Producto.objects.create(nombre="Sin foto (base)", precio=D("1"))
+        return self.cotizacion(sin_foto).count(b"/Subtype /Image")
+
+    def cotizacion(self, *productos):
+        cot = servicios.crear_cotizacion(self.ana, [self.item(p, None, 1) for p in productos])
+        from .pdf import generar_pdf_cotizacion
+        return generar_pdf_cotizacion(cot)
+
+    def test_sin_fotos_no_hay_columna_de_fotos(self):
+        pdf = self.cotizacion(self.p1, self.p2)
+        self.assertEqual(pdf.count(b"/Subtype /Image"), self.imagenes_base())  # solo el logo
+
+    def test_cada_producto_con_foto_la_lleva_incrustada(self):
+        p3 = Producto.objects.create(nombre="Tercero", precio=D("5"))
+        base = self.imagenes_base()
+        for p, color in ((self.p1, "red"), (self.p2, "blue"), (p3, "green")):
+            self.con_foto(p, color)
+        self.assertEqual(self.cotizacion(self.p1, self.p2, p3).count(b"/Subtype /Image"), base + 3)
+
+    def test_producto_sin_foto_entre_otros_con_foto_lleva_un_cuadrito_claro(self):
+        base = self.imagenes_base()
+        self.con_foto(self.p1, "red")
+        # logo + foto del p1 + marcador del p2
+        self.assertEqual(self.cotizacion(self.p1, self.p2).count(b"/Subtype /Image"), base + 1 + 1)
+
+    def test_la_miniatura_es_cuadrada_liviana_y_jpeg(self):
+        from io import BytesIO
+        from PIL import Image
+        from .pdf import FOTO_PX, _a_miniatura
+        for ancho, alto in ((800, 600), (600, 800), (500, 500)):
+            datos = _a_miniatura(_png("orange", ancho, alto))
+            img = Image.open(BytesIO(datos))
+            self.assertEqual(img.format, "JPEG")
+            self.assertEqual(img.size, (FOTO_PX, FOTO_PX))
+            self.assertLess(len(datos), 20_000)
+
+    def test_una_foto_que_falla_no_rompe_el_pdf(self):
+        from unittest import mock
+        base = self.imagenes_base()
+        self.con_foto(self.p1, "red"); self.con_foto(self.p2, "blue")
+        with mock.patch("inventario.pdf._origen_foto", return_value=("url", "http://no-existe.invalid/x.jpg")), \
+             mock.patch("inventario.pdf._descargar", side_effect=OSError("sin internet")):
+            pdf = self.cotizacion(self.p1, self.p2)
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertEqual(pdf.count(b"/Subtype /Image"), base)  # sin ninguna foto: solo el logo
+
+    def test_una_foto_dañada_no_rompe_el_pdf(self):
+        from django.core.files.base import ContentFile
+        from catalogo.models import ImagenProducto
+        ImagenProducto.objects.create(producto=self.p1, imagen=ContentFile(b"esto no es una imagen", name="rota.png"))
+        self.assertTrue(self.cotizacion(self.p1).startswith(b"%PDF"))
+
+    def test_las_fotos_en_la_nube_se_piden_ya_recortadas_y_en_jpg(self):
+        from .pdf import _url_miniatura
+        url = _url_miniatura("https://res.cloudinary.com/demo/image/upload/v1/productos/a.png")
+        self.assertIn("w_180,h_180,c_fill", url)
+        self.assertIn("f_jpg", url)
+
+    def test_la_descarga_en_la_nube_funciona_y_va_en_paralelo(self):
+        from unittest import mock
+        from .pdf import miniaturas_de
+        productos = [Producto.objects.create(nombre=f"Nube {i}", precio=D("5")) for i in range(5)]
+        llamadas = []
+        def falsa(url):
+            llamadas.append(url)
+            return _png("purple", 640, 480)
+        with mock.patch("inventario.pdf._origen_foto", side_effect=lambda p: ("url", f"https://x/{p.pk}.jpg")), \
+             mock.patch("inventario.pdf._descargar", side_effect=falsa):
+            fotos = miniaturas_de(productos)
+        self.assertEqual(sorted(fotos), sorted(p.pk for p in productos))
+        self.assertEqual(len(llamadas), 5)
+
+    def test_hasta_8_productos_con_foto_caben_en_una_hoja(self):
+        productos = [Producto.objects.create(nombre=f"Producto {i}", precio=D("7")) for i in range(8)]
+        for i, p in enumerate(productos):
+            self.con_foto(p, ("red", "blue", "green", "orange")[i % 4])
+        pdf = self.cotizacion(*productos)
+        self.assertEqual(pdf.count(b"/Type /Page\n"), 1)
+
+    def test_el_recibo_de_respaldo_sigue_sin_fotos(self):
+        base = self.imagenes_base()
+        self.con_foto(self.p1, "red")
+        servicios.registrar_ingreso(self.p1, self.casa, 5, self.admin)
+        v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1)])
+        from .pdf import generar_pdf_recibo
+        self.assertEqual(generar_pdf_recibo(v).count(b"/Subtype /Image"), base)  # solo el logo

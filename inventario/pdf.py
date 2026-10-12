@@ -2,8 +2,12 @@
 
 Importante: ninguno incluye stock ni ubicaciones, solo lo que un cliente puede ver.
 Todo el dinero va en enteros (sin decimales)."""
+import logging
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
@@ -15,9 +19,15 @@ from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    Image, KeepInFrame, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+)
 
-from catalogo.models import ConfiguracionSitio
+from PIL import Image as PILImage, ImageDraw, ImageOps
+
+from catalogo.models import ConfiguracionSitio, _url_cloudinary_transformada
+
+log = logging.getLogger(__name__)
 
 TEAL = colors.HexColor("#0B5C53")
 CLAY = colors.HexColor("#E4DFD3")
@@ -32,12 +42,100 @@ PIE_GRACIAS = "¡Gracias por confiar en nosotros!"
 LINEA_GRUPO = "Parte de Grupo Misael"  # bajo el nombre de la tienda, arriba a la derecha
 
 MARGEN_LATERAL = 18 * mm
-MARGEN_INFERIOR = 40 * mm  # deja lugar al pie
+MARGEN_INFERIOR = 33 * mm  # deja lugar al pie (el pie ocupa unos 30 mm desde el borde)
 
 
 def _bs(valor):
     """Dinero siempre entero: 'Bs. 1234'."""
     return f"Bs. {Decimal(valor).quantize(Decimal('1'), rounding=ROUND_HALF_UP):.0f}"
+
+
+# --------------------------------------------------------------------------
+# Fotos pequeñas de referencia (cotización)
+# --------------------------------------------------------------------------
+FOTO_MM = 11          # lado de la miniatura en el PDF
+FOTO_PX = 180         # resolución con la que se incrusta (nítida pero liviana)
+
+
+def _url_miniatura(url):
+    """Si la foto está en Cloudinary, se pide ya recortada y chica (JPG: el PDF no lee WebP)."""
+    return _url_cloudinary_transformada(url, f"w_{FOTO_PX},h_{FOTO_PX},c_fill,q_auto,f_jpg")
+
+
+@lru_cache(maxsize=256)
+def _descargar(url):
+    """Descarga una foto (con límite de tamaño y de tiempo). Se recuerda para no repetirla."""
+    peticion = urllib.request.Request(url, headers={"User-Agent": "MisaelToys-PDF/1.0"})
+    with urllib.request.urlopen(peticion, timeout=5) as respuesta:
+        datos = respuesta.read(3_000_000 + 1)
+    if len(datos) > 3_000_000:
+        raise ValueError("foto demasiado grande")
+    return datos
+
+
+def _a_miniatura(datos):
+    """Foto cuadrada, centrada y con esquinas redondeadas, en JPEG liviano."""
+    img = PILImage.open(BytesIO(datos))
+    img = ImageOps.exif_transpose(img).convert("RGB")
+    img = ImageOps.fit(img, (FOTO_PX, FOTO_PX), method=PILImage.LANCZOS)
+    mascara = PILImage.new("L", (FOTO_PX, FOTO_PX), 0)
+    ImageDraw.Draw(mascara).rounded_rectangle((0, 0, FOTO_PX - 1, FOTO_PX - 1), radius=FOTO_PX // 7, fill=255)
+    fondo = PILImage.new("RGB", (FOTO_PX, FOTO_PX), "white")
+    fondo.paste(img, (0, 0), mascara)
+    salida = BytesIO()
+    fondo.save(salida, "JPEG", quality=82, optimize=True)
+    return salida.getvalue()
+
+
+def _marcador_sin_foto():
+    """Cuadrito claro con las mismas esquinas, para que las filas sin foto no queden más bajas."""
+    img = PILImage.new("RGB", (FOTO_PX, FOTO_PX), "white")
+    ImageDraw.Draw(img).rounded_rectangle((0, 0, FOTO_PX - 1, FOTO_PX - 1), radius=FOTO_PX // 7, fill="#F1EEE6")
+    salida = BytesIO()
+    img.save(salida, "JPEG", quality=80)
+    return salida.getvalue()
+
+
+def _origen_foto(producto):
+    """De dónde sale la foto principal: ('url', ...) si está en la nube, ('bytes', ...) si es un
+    archivo local, o None si el producto no tiene foto. Se llama en el hilo principal (usa la BD)."""
+    imagenes = list(producto.imagenes.all())
+    if not imagenes:
+        return None
+    campo = imagenes[0].imagen
+    try:
+        url = campo.url
+        if url.startswith("http"):
+            return ("url", _url_miniatura(url))
+        with campo.open("rb") as archivo:
+            return ("bytes", archivo.read())
+    except Exception:
+        log.warning("No se pudo leer la foto del producto %s", producto.pk, exc_info=True)
+        return None
+
+
+def _miniatura_de(origen):
+    try:
+        datos = _descargar(origen[1]) if origen[0] == "url" else origen[1]
+        return _a_miniatura(datos)
+    except Exception:
+        log.warning("No se pudo preparar una foto para el PDF", exc_info=True)
+        return None  # sin foto no se rompe nada: la celda queda vacía
+
+
+def miniaturas_de(productos):
+    """{id de producto: bytes JPEG}. Las descargas van en paralelo; si una falla, ese producto
+    simplemente sale sin foto."""
+    origenes = {}
+    for p in productos:
+        if p.pk not in origenes:
+            origenes[p.pk] = _origen_foto(p)
+    pendientes = {pk: o for pk, o in origenes.items() if o}
+    if not pendientes:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(8, len(pendientes))) as pool:
+        resultados = list(pool.map(_miniatura_de, pendientes.values()))
+    return {pk: foto for pk, foto in zip(pendientes, resultados) if foto}
 
 
 def _esc(texto):
@@ -193,32 +291,55 @@ def generar_pdf_cotizacion(cot):
     buf = BytesIO()
     doc = _documento(buf, f"Cotización {cot.numero}", config)
 
-    el = [_cabecera(config, st), Spacer(1, 6 * mm)]
+    el = [_cabecera(config, st), Spacer(1, 4 * mm)]
 
     fecha = timezone.localtime(cot.creado).date()
     vence = fecha + timedelta(days=cot.validez_dias)
-    el += [Paragraph(f"COTIZACIÓN N° {cot.numero}", st["titulo"]), Spacer(1, 2 * mm)]
-    datos = [f"Fecha: {fecha:%d/%m/%Y}", f"Válida hasta: {vence:%d/%m/%Y}"]
-    if cot.cliente:
-        datos.insert(0, f"Cliente: <b>{_esc(cot.cliente)}</b>")
-    el += [Paragraph("<br/>".join(datos), st["normal"]), Spacer(1, 6 * mm)]
+    el += [Paragraph(f"COTIZACIÓN N° {cot.numero}", st["titulo"]), Spacer(1, 1.5 * mm)]
+    # Cliente a la izquierda, fechas a la derecha: una línea menos
+    izquierda = f"Cliente: <b>{_esc(cot.cliente)}</b>" if cot.cliente else ""
+    derecha = f"Fecha: {fecha:%d/%m/%Y}<br/>Válida hasta: {vence:%d/%m/%Y}"
+    datos = Table([[Paragraph(izquierda, st["normal"]), Paragraph(derecha, st["der"])]], colWidths=[100 * mm, 69 * mm])
+    datos.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                               ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    el += [datos, Spacer(1, 4 * mm)]
 
-    filas = [["Producto", "Cant.", "P. unitario", "Subtotal"]]
-    for it in cot.items.select_related("producto"):
-        filas.append([Paragraph(_esc(it.producto.nombre), st["normal"]), str(it.cantidad),
-                      _bs(it.precio_unitario), _bs(it.subtotal)])
-    el += [_tabla_items(filas, [81 * mm, 18 * mm, 35 * mm, 35 * mm]), Spacer(1, 4 * mm),
+    # Foto pequeña de cada producto como referencia para el cliente (11 mm: casi no ocupa espacio).
+    # Si NINGÚN producto tiene foto, la columna ni se muestra; si algunos no tienen, llevan un cuadrito claro.
+    items = list(cot.items.select_related("producto").prefetch_related("producto__imagenes"))
+    fotos = miniaturas_de([it.producto for it in items])
+    con_fotos = bool(fotos)
+    marcador = _marcador_sin_foto() if con_fotos else None
+    filas = [(["" ] if con_fotos else []) + ["Producto", "Cant.", "P. unitario", "Subtotal"]]
+    for it in items:
+        fila = []
+        if con_fotos:
+            fila.append(Image(BytesIO(fotos.get(it.producto_id) or marcador), width=FOTO_MM * mm, height=FOTO_MM * mm))
+        fila += [Paragraph(_esc(it.producto.nombre), st["normal"]), str(it.cantidad),
+                 _bs(it.precio_unitario), _bs(it.subtotal)]
+        filas.append(fila)
+    if con_fotos:
+        tabla = _tabla_items(filas, [16 * mm, 67 * mm, 16 * mm, 35 * mm, 35 * mm])
+        tabla.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (1, -1), "LEFT"),
+            ("TOPPADDING", (0, 1), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
+        ]))
+    else:
+        tabla = _tabla_items(filas, [81 * mm, 18 * mm, 35 * mm, 35 * mm])
+    el += [tabla, Spacer(1, 4 * mm),
            _tabla_totales(cot.subtotal, cot.detalle_reglas, cot.descuento_extra, cot.total, st)]
 
     if cot.observaciones:
-        el += [Spacer(1, 8 * mm), Paragraph("Observaciones", st["negrita"]),
+        el += [Spacer(1, 5 * mm), Paragraph("Observaciones", st["negrita"]),
                Paragraph(_esc(cot.observaciones).replace("\n", "<br/>"), st["normal"])]
 
     notas = [f"Precios en bolivianos (Bs.). Cotización válida por {cot.validez_dias} días, sujeta a disponibilidad."]
     if config.envios_nacionales and config.texto_envios:
-        notas.append(_esc(config.texto_envios) + (f". {_esc(config.detalle_envios)}" if config.detalle_envios else ""))
-    el += [Spacer(1, 8 * mm)] + [Paragraph(n, st["chico"]) for n in notas]
-    el += [Spacer(1, 5 * mm), Paragraph(PIE_GRACIAS, st["gracias"])]
+        notas.append(_esc(config.texto_envios).rstrip(".") + (f". {_esc(config.detalle_envios).rstrip('.')}" if config.detalle_envios else "") + ".")
+    # Las notas finales van juntas: nunca queda "¡Gracias!" solo en otra hoja
+    el.append(KeepTogether([Spacer(1, 3.5 * mm), Paragraph(" ".join(notas), st["chico"]),
+                            Spacer(1, 2 * mm), Paragraph(PIE_GRACIAS, st["gracias"])]))
 
     pie = _dibujar_pie(config)
     doc.build(el, onFirstPage=pie, onLaterPages=pie)
@@ -247,12 +368,12 @@ def generar_pdf_recibo(venta):
         datos.append("<font color='#C0392B'><b>VENTA ANULADA</b></font>")
     el += [Paragraph("<br/>".join(datos), st["normal"]), Spacer(1, 4 * mm)]
 
-    filas = [["Cant.", "Producto", "P. unitario", "Subtotal"]]
+    filas = [["Cant.", "Cód.", "Producto", "P. unitario", "Subtotal"]]
     for it in venta.items.select_related("producto"):
-        filas.append([str(it.cantidad), Paragraph(_esc(it.producto.nombre), st["normal"]),
+        filas.append([str(it.cantidad), it.producto.codigo or "—", Paragraph(_esc(it.producto.nombre), st["normal"]),
                       _bs(it.precio_unitario), _bs(it.subtotal)])
-    tabla = _tabla_items(filas, [16 * mm, 83 * mm, 35 * mm, 35 * mm])
-    tabla.setStyle(TableStyle([("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (1, -1), "LEFT")]))
+    tabla = _tabla_items(filas, [14 * mm, 19 * mm, 66 * mm, 35 * mm, 35 * mm])
+    tabla.setStyle(TableStyle([("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (2, -1), "LEFT")]))
     el += [tabla, Spacer(1, 3 * mm),
            _tabla_totales(venta.subtotal, venta.detalle_reglas, venta.descuento_extra, venta.total, st)]
 

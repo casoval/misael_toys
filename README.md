@@ -72,9 +72,15 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   grandes los productos van a la izquierda y el detalle con el total a la derecha (siempre
   visible); en celular, el total queda fijo abajo en una barra delgada y las opciones
   (descuento, cliente, notas) empiezan cerradas para hacer menos scroll.
-- **Tarjetas en celular**: 2 por fila, con categoría (con su color), nombre, descripción corta,
-  medidas, precio y stock por lugar, como en la página principal. En pantallas grandes son más
-  chicas y compactas.
+- **Código interno** (J001, J002…): cada producto tiene un número de ítem para control interno.
+  Es opcional: si lo dejas vacío se genera solo (el siguiente libre), y también puedes escribir el
+  que quieras (ej. J025 o KIT-01; se guarda en mayúsculas y no se puede repetir). No se muestra en
+  el sitio público. Aparece en las tarjetas del panel, en el detalle de ventas y cotizaciones y en el
+  recibo, y el buscador del panel encuentra por nombre o por código. Se edita en *Admin → Productos*
+  (al crear uno, el admin ya sugiere el siguiente). Los productos existentes se numeran al actualizar
+  (`migrate`), en orden de creación.
+- **Tarjetas del panel**: compactas (foto, código, nombre, precio y stock por lugar), hasta 3 por fila
+  en celular y muchas más en pantallas grandes. No muestran la descripción.
 - **Filtros** (Stock, Vender y Cotizar): los mismos que se van generando en el catálogo público —
   categorías y atributos como Material, Edad o Color (los que tengan «mostrar como filtro»)— más
   precio, «hay en [lugar]» y «solo con stock». Se aplican al instante, sin recargar. Dentro de un
@@ -93,6 +99,11 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
 - **Página principal**: el panel y su login tienen un enlace «Página principal» para volver al sitio.
 - **Acceso**: el sitio público tiene un enlace «Acceder» en el encabezado
   (pantallas grandes) y otro en el pie, que llevan a `/panel/`.
+- **Fotos en la cotización**: cada producto lleva una foto pequeña (11 mm, cuadrada y con esquinas
+  redondeadas) como referencia para el cliente. Si ningún producto tiene foto, la columna no aparece;
+  si solo algunos no tienen, llevan un cuadrito claro. Las fotos se piden ya recortadas a Cloudinary
+  (en paralelo y con límite de tiempo); si una falla, esa fila sale sin foto y el PDF se genera igual.
+  El recibo de respaldo no lleva fotos.
 - **Cotizaciones**: eliges productos y cantidades, ves el total con las
   promociones aplicadas y descargas un **PDF** para el cliente (sin stock ni
   lugares). No descuenta stock.

@@ -149,3 +149,118 @@ class PortadaTests(TestCase):
         # y las clases del aviso de envíos y de las categorías ya no están sin estilo
         for clase in (".explora-link", ".explora-categorias", ".franja-envios", ".envios-icono"):
             self.assertIn(clase, css)
+
+
+class CodigoInternoTests(TestCase):
+    """Código interno de producto: J001, J002… automático, opcional y editable."""
+
+    def crear(self, nombre="Producto", **extra):
+        return Producto.objects.create(nombre=nombre, precio=Decimal("10"), **extra)
+
+    def test_el_primer_producto_es_j001_y_siguen_en_orden(self):
+        self.assertEqual([self.crear(f"P{i}").codigo for i in range(3)], ["J001", "J002", "J003"])
+
+    def test_codigo_manual_se_respeta_y_se_guarda_en_mayusculas(self):
+        p = self.crear("Manual", codigo="  kit-01 ")
+        self.assertEqual(p.codigo, "KIT-01")
+
+    def test_un_codigo_manual_con_otra_forma_no_altera_la_numeracion(self):
+        self.crear("A"); self.crear("B", codigo="KIT-01")
+        self.assertEqual(self.crear("C").codigo, "J002")
+
+    def test_continua_desde_el_numero_mas_alto_aunque_haya_huecos(self):
+        self.crear("A", codigo="J001"); self.crear("B", codigo="J009")
+        self.assertEqual(self.crear("C").codigo, "J010")
+
+    def test_pasa_de_999_sin_problemas(self):
+        self.crear("A", codigo="J999")
+        self.assertEqual(self.crear("B").codigo, "J1000")
+
+    def test_si_se_borra_el_codigo_se_genera_uno_nuevo(self):
+        p = self.crear("A"); self.assertEqual(p.codigo, "J001")
+        p.codigo = ""
+        p.save()
+        self.assertEqual(p.codigo, "J001")  # era el único: no se pierde un número
+        q = self.crear("B"); self.assertEqual(q.codigo, "J002")
+        p.codigo = None; p.save()
+        self.assertEqual(p.codigo, "J003")  # hay uno posterior: toma el siguiente libre
+        self.assertEqual(Producto.objects.filter(codigo="J001").count(), 0)
+
+    def test_guardar_otra_vez_no_cambia_el_codigo(self):
+        p = self.crear("A")
+        for _ in range(3):
+            p.nombre += "!"; p.save()
+        self.assertEqual(Producto.objects.get(pk=p.pk).codigo, "J001")
+
+    def test_guardado_parcial_sin_codigo_no_lo_toca(self):
+        p = self.crear("A")
+        Producto.objects.filter(pk=p.pk).update(codigo=None)
+        p.refresh_from_db()
+        p.total_likes = 5
+        p.save(update_fields=["total_likes"])  # p.ej. dar "me gusta": no debe inventar un código
+        self.assertIsNone(Producto.objects.get(pk=p.pk).codigo)
+
+    def test_no_se_puede_repetir_ni_cambiando_mayusculas(self):
+        from django.core.exceptions import ValidationError
+        self.crear("A", codigo="J005")
+        otro = Producto(nombre="B", slug="b", precio=Decimal("1"), codigo="j005")
+        with self.assertRaises(ValidationError) as ctx:
+            otro.full_clean()
+        self.assertIn("codigo", ctx.exception.message_dict)
+
+    def test_la_migracion_numera_los_productos_existentes_en_orden_de_creacion(self):
+        from importlib import import_module
+        from django.apps import apps
+        a, b, c = self.crear("Viejo 1"), self.crear("Viejo 2"), self.crear("Viejo 3")
+        Producto.objects.update(codigo=None)
+        import_module("catalogo.migrations.0011_asignar_codigos").asignar_codigos(apps, None)
+        self.assertEqual(list(Producto.objects.order_by("id").values_list("codigo", flat=True)), ["J001", "J002", "J003"])
+
+    def test_el_codigo_no_se_muestra_en_el_sitio_publico(self):
+        p = self.crear("Cubo sensorial")
+        for url in ("/", p.get_absolute_url()):
+            self.assertNotContains(self.client.get(url), p.codigo)
+
+    def test_el_admin_sugiere_el_siguiente_codigo_y_busca_por_codigo(self):
+        from django.contrib.auth import get_user_model
+        get_user_model().objects.create_superuser("root", "r@r.com", "x")
+        self.client.login(username="root", password="x")
+        self.crear("A"); self.crear("B")
+        r = self.client.get("/admin/catalogo/producto/add/")
+        self.assertContains(r, 'value="J003"')
+        r = self.client.get("/admin/catalogo/producto/?q=J002")
+        self.assertContains(r, "B")
+
+
+class EstilosDelCatalogoTests(TestCase):
+    """Protege los estilos del sitio: un edit del CSS ya borró por accidente los de colores, medidas y SEO."""
+
+    CLASES_CON_ESTILO = [
+        # colores disponibles
+        ".detalle-colores", ".detalle-colores-titulo", ".detalle-colores-nota", ".colores-grid", ".color-item",
+        ".swatch-color", ".color-nombre", ".detalle-colores-aviso",
+        # medidas y envíos
+        ".detalle-medidas", ".medidas-grid", ".medidas-nota", ".medidas-referencia", ".detalle-envio",
+        ".tarjeta-medidas", ".footer-envios", ".franja-envios",
+        # SEO, categorías y animaciones
+        ".hero-h1", ".categoria-intro p", ".seo-texto", ".explora-categorias", ".explora-link", ".footer a",
+        # tarjetas, filtros y colores de filtros
+        ".grid-productos", ".tarjeta-nombre", ".filtro-color", ".swatch", ".swatch-multicolor",
+    ]
+
+    def test_el_css_conserva_los_estilos_de_cada_seccion(self):
+        import re
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        definidos = set()
+        for m in re.finditer(r"([^{}]+)\{", css):
+            for sel in m.group(1).split(","):
+                definidos.add(" ".join(sel.split()))
+        faltan = [c for c in self.CLASES_CON_ESTILO if c not in definidos]
+        self.assertEqual(faltan, [], f"Clases sin estilos en style.css: {faltan}")
+
+    def test_la_ficha_usa_clases_que_tienen_estilo(self):
+        p = Producto.objects.create(nombre="Cubo", precio=Decimal("10"))
+        r = self.client.get(p.get_absolute_url())
+        for clase in ("detalle-colores", "colores-grid", "color-item", "swatch-color", "color-nombre"):
+            self.assertContains(r, clase)
