@@ -1,8 +1,10 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from catalogo.models import Atributo, Categoria, Producto, ValorAtributo
 
@@ -925,3 +927,104 @@ class BuscarPorCodigoEnElPanelTests(Base):
         Producto.objects.filter(pk=self.p2.pk).update(codigo=None)
         self.p2.refresh_from_db()
         self.assertEqual(_nombre_con_codigo(self.p2), "Cubo")
+
+
+class OrdenBusquedaYNumeracionTests(Base):
+    """Listas de Ventas/Cotizaciones con orden y fechas; PDFs con productos numerados."""
+
+    def setUp(self):
+        super().setUp()
+        servicios.registrar_ingreso(self.p1, self.casa, 50, self.admin)
+        servicios.registrar_ingreso(self.p2, self.casa, 50, self.admin)
+        self.v1 = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1)], cliente="Zoe")
+        self.v2 = servicios.registrar_venta(self.luis, [self.item(self.p2, self.casa, 3)], cliente="Ana María")
+        self.v3 = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 2)], cliente="Mario")
+        self.c1 = servicios.crear_cotizacion(self.ana, [self.item(self.p1, None, 1)], cliente="Zoe")
+        self.c2 = servicios.crear_cotizacion(self.luis, [self.item(self.p2, None, 5)], cliente="Beto")
+        self.client.login(username="admin", password="x")
+
+    def ids(self, r, clave):
+        return [o.pk for o in r.context[clave]]
+
+    def test_orden_por_defecto_es_mas_reciente_primero(self):
+        r = self.client.get(reverse("panel:ventas"))
+        self.assertEqual(self.ids(r, "ventas"), [self.v3.pk, self.v2.pk, self.v1.pk])
+
+    def test_ventas_ordenan_por_fecha_monto_cliente_y_vendedor(self):
+        url = reverse("panel:ventas")
+        casos = {
+            "antiguos": [self.v1.pk, self.v2.pk, self.v3.pk],
+            "numero": [self.v1.pk, self.v2.pk, self.v3.pk],
+            "total_desc": [self.v2.pk, self.v3.pk, self.v1.pk],   # 60, 20, 10
+            "total_asc": [self.v1.pk, self.v3.pk, self.v2.pk],
+            "cliente": [self.v2.pk, self.v3.pk, self.v1.pk],      # Ana María, Mario, Zoe
+            "usuario": [self.v3.pk, self.v1.pk, self.v2.pk],      # ana (más nueva primero), luis
+        }
+        for orden, esperado in casos.items():
+            with self.subTest(orden=orden):
+                self.assertEqual(self.ids(self.client.get(url, {"orden": orden}), "ventas"), esperado)
+
+    def test_orden_invalido_cae_en_el_por_defecto(self):
+        r = self.client.get(reverse("panel:ventas"), {"orden": "'; drop table"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["f"]["orden"], "recientes")
+
+    def test_cotizaciones_ordenan_y_filtran_por_fecha(self):
+        url = reverse("panel:cotizaciones")
+        self.assertEqual(self.ids(self.client.get(url), "cotizaciones"), [self.c2.pk, self.c1.pk])
+        self.assertEqual(self.ids(self.client.get(url, {"orden": "cliente"}), "cotizaciones"), [self.c2.pk, self.c1.pk])
+        self.assertEqual(self.ids(self.client.get(url, {"orden": "total_desc"}), "cotizaciones"), [self.c2.pk, self.c1.pk])
+        hoy = timezone.localdate()
+        ayer, manana = hoy - timedelta(days=1), hoy + timedelta(days=1)
+        self.assertEqual(len(self.ids(self.client.get(url, {"desde": hoy.isoformat(), "hasta": hoy.isoformat()}), "cotizaciones")), 2)
+        self.assertEqual(self.ids(self.client.get(url, {"hasta": ayer.isoformat()}), "cotizaciones"), [])
+        self.assertEqual(self.ids(self.client.get(url, {"desde": manana.isoformat()}), "cotizaciones"), [])
+
+    def test_fecha_mal_escrita_no_da_error(self):
+        for nombre in ("panel:ventas", "panel:cotizaciones"):
+            r = self.client.get(reverse(nombre), {"desde": "ayer", "hasta": "99-99-99"})
+            self.assertEqual(r.status_code, 200)
+
+    def test_busca_por_vendedor_codigo_y_nombre(self):
+        url = reverse("panel:ventas")
+        self.assertEqual(sorted(self.ids(self.client.get(url, {"q": "luis"}), "ventas")), [self.v2.pk])
+        self.assertEqual(sorted(self.ids(self.client.get(url, {"q": self.p1.codigo}), "ventas")), sorted([self.v1.pk, self.v3.pk]))
+        self.assertEqual(self.ids(self.client.get(url, {"q": "cubo"}), "ventas"), [self.v2.pk])
+        r = self.client.get(reverse("panel:cotizaciones"), {"q": "luis"})
+        self.assertEqual(self.ids(r, "cotizaciones"), [self.c2.pk])
+
+    def test_admin_filtra_cotizaciones_por_creador_y_vendedor_no_ve_ajenas(self):
+        r = self.client.get(reverse("panel:cotizaciones"), {"vendedor": self.luis.pk})
+        self.assertEqual(self.ids(r, "cotizaciones"), [self.c2.pk])
+        self.client.login(username="ana", password="x")
+        r = self.client.get(reverse("panel:cotizaciones"), {"vendedor": self.luis.pk})
+        self.assertEqual(self.ids(r, "cotizaciones"), [self.c1.pk])
+
+    def test_selector_de_orden_de_productos_en_vender_cotizar_y_stock(self):
+        for nombre in ("panel:venta_nueva", "panel:cotizacion_nueva", "panel:stock"):
+            self.assertContains(self.client.get(reverse(nombre)), "data-f-orden")
+
+    def _numeros_de_pdf(self, generar, documento):
+        """Captura la tabla de productos que se arma para el PDF y devuelve su primera columna."""
+        from unittest import mock
+        from . import pdf
+        capturadas = []
+        original = pdf._tabla_items
+
+        def espia(filas, anchos):
+            capturadas.append(filas)
+            return original(filas, anchos)
+
+        with mock.patch.object(pdf, "_tabla_items", espia):
+            self.assertTrue(generar(documento).startswith(b"%PDF"))
+        return [fila[0] for fila in capturadas[0]]
+
+    def test_pdf_cotizacion_numera_los_productos(self):
+        from .pdf import generar_pdf_cotizacion
+        cot = servicios.crear_cotizacion(self.ana, [self.item(self.p1, None, 1), self.item(self.p2, None, 2)])
+        self.assertEqual(self._numeros_de_pdf(generar_pdf_cotizacion, cot), ["N°", "1", "2"])
+
+    def test_pdf_recibo_numera_los_productos(self):
+        from .pdf import generar_pdf_recibo
+        v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1), self.item(self.p2, self.casa, 2)])
+        self.assertEqual(self._numeros_de_pdf(generar_pdf_recibo, v), ["N°", "1", "2", ])

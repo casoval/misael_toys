@@ -49,6 +49,19 @@
       </div>
     </details>
 
+    <label class="p-forden">Ordenar
+      <select data-f-orden aria-label="Ordenar productos por">
+        <option value="nombre">Nombre (A-Z)</option>
+        <option value="nombre_desc">Nombre (Z-A)</option>
+        <option value="codigo">Código</option>
+        <option value="precio_asc">Precio: menor a mayor</option>
+        <option value="precio_desc">Precio: mayor a menor</option>
+        <option value="stock_desc">Más stock primero</option>
+        <option value="stock_asc">Menos stock primero</option>
+        <option value="recientes">Más recientes (últimos creados)</option>
+      </select>
+    </label>
+
     <p class="p-fresumen"><span data-f-resumen></span><button type="button" class="p-flimpiar" data-f-limpiar hidden>Limpiar filtros</button></p>
     {% include "panel/_toggle_vista.html" %}
   </div>

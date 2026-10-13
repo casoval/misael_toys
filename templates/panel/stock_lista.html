@@ -16,7 +16,7 @@
 
 <div class="p-productos vista-tarjetas" data-vista-contenedor>
 {% for f in filas %}
-  <a class="p-prod {% if f.total <= 0 %}agotado{% endif %}" href="{% url 'panel:stock_producto' f.producto.pk %}" data-nombre="{{ f.producto.nombre }}" data-codigo="{{ f.producto.codigo|default:'' }}"
+  <a class="p-prod {% if f.total <= 0 %}agotado{% endif %}" href="{% url 'panel:stock_producto' f.producto.pk %}" data-id="{{ f.producto.pk }}" data-nombre="{{ f.producto.nombre }}" data-codigo="{{ f.producto.codigo|default:'' }}"
      data-categoria="{{ f.producto.categoria_id|default:'' }}" data-valores="{{ f.valores }}"
      data-precio="{{ f.precio|floatformat:0 }}" data-total="{{ f.total }}"{% for l in f.lugares %} data-u{{ l.ubicacion.pk }}="{{ l.cantidad }}"{% endfor %}>
     <span class="p-prod-foto">{% if f.foto %}<img src="{{ f.foto }}" alt="" loading="lazy">{% else %}<i class="p-sinfoto"></i>{% endif %}</span>

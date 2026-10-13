@@ -32,12 +32,38 @@
   const entradaMax = el("[data-f-pmax]");
   const selLugar = el("[data-f-lugar]");
   const chkStock = el("[data-f-constock]");
+  const selOrden = el("[data-f-orden]");
   const conUnidades = barra.dataset.fUnidades === "1";
   let categoria = "";
 
   function numero(inp) {
     const v = parseInt(inp.value, 10);
     return Number.isNaN(v) ? null : v;
+  }
+
+  // ---------- Orden ----------
+  // Por defecto A-Z por nombre (así llegan del servidor). El orden elegido se recuerda.
+  const KEY_ORDEN = "panel-orden";
+  const cmp = (a, b) => (a || "").localeCompare(b || "", "es", { numeric: true, sensitivity: "base" });
+  const num = (t, k) => parseInt(t.dataset[k], 10) || 0;
+  const ORDENES = {
+    nombre: (a, b) => cmp(a.dataset.nombre, b.dataset.nombre),
+    nombre_desc: (a, b) => cmp(b.dataset.nombre, a.dataset.nombre),
+    // Sin código al final; con código, "natural" (J2 antes que J10)
+    codigo: (a, b) => (!a.dataset.codigo - !b.dataset.codigo) || cmp(a.dataset.codigo, b.dataset.codigo) || cmp(a.dataset.nombre, b.dataset.nombre),
+    precio_asc: (a, b) => num(a, "precio") - num(b, "precio") || cmp(a.dataset.nombre, b.dataset.nombre),
+    precio_desc: (a, b) => num(b, "precio") - num(a, "precio") || cmp(a.dataset.nombre, b.dataset.nombre),
+    stock_desc: (a, b) => num(b, "total") - num(a, "total") || cmp(a.dataset.nombre, b.dataset.nombre),
+    stock_asc: (a, b) => num(a, "total") - num(b, "total") || cmp(a.dataset.nombre, b.dataset.nombre),
+    recientes: (a, b) => num(b, "id") - num(a, "id"),
+  };
+
+  function ordenar() {
+    const f = ORDENES[selOrden.value] || ORDENES.nombre;
+    document.querySelectorAll("[data-vista-contenedor]").forEach((c) => {
+      const tarjetas = [...c.querySelectorAll(":scope > .p-prod")];
+      tarjetas.sort(f).forEach((t) => c.appendChild(t)); // reubica las tarjetas existentes (no las recrea)
+    });
   }
 
   function aplicarFiltros() {
@@ -97,6 +123,10 @@
   }));
   [entradaQ, entradaMin, entradaMax].forEach((i) => i.addEventListener("input", aplicarFiltros));
   selLugar.addEventListener("change", aplicarFiltros);
+  selOrden.addEventListener("change", () => {
+    try { localStorage.setItem(KEY_ORDEN, selOrden.value); } catch (e) {}
+    ordenar();
+  });
   chkStock.addEventListener("change", aplicarFiltros);
 
   el("[data-f-limpiar]").addEventListener("click", () => {
@@ -107,7 +137,7 @@
     selLugar.value = "";
     chkStock.checked = false;
     aplicarFiltros();
-  });
+  });  // (Limpiar filtros no cambia el orden elegido)
 
   // Enter en el buscador no debe enviar el formulario de venta/cotización
   entradaQ.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
@@ -118,5 +148,7 @@
   document.addEventListener("click", (e) => { if (fmas && fmas.open && !fmas.contains(e.target)) fmas.open = false; });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && fmas) fmas.open = false; });
 
+  try { const g = localStorage.getItem(KEY_ORDEN); if (g && ORDENES[g]) selOrden.value = g; } catch (e) {}
+  ordenar();
   aplicarFiltros();
 })();

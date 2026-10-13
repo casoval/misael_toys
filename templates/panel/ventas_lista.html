@@ -3,7 +3,7 @@
 {% block contenido %}
 <h1>{% if user.is_staff %}Ventas{% else %}Mis ventas{% endif %}</h1>
 <form class="p-filtros" method="get">
-  <input type="search" name="q" value="{{ f.q }}" placeholder="Buscar por código, producto, cliente o N°…" autocomplete="off">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Buscar por código, producto, cliente, vendedor o N°…" autocomplete="off">
   {% if user.is_staff %}
   <select name="vendedor"><option value="">Todos los vendedores</option>
     {% for v in vendedores %}<option value="{{ v.pk }}" {% if f.vendedor == v.pk|stringformat:"s" %}selected{% endif %}>{{ v.username }}</option>{% endfor %}
@@ -11,7 +11,11 @@
   {% endif %}
   <label>Desde <input type="date" name="desde" value="{{ f.desde }}"></label>
   <label>Hasta <input type="date" name="hasta" value="{{ f.hasta }}"></label>
+  <label>Ordenar por
+    <select name="orden">{% for clave, etiqueta in ordenes %}<option value="{{ clave }}" {% if f.orden == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}</select>
+  </label>
   <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
+  {% if f.q or f.vendedor or f.desde or f.hasta or f.orden != "recientes" %}<a class="p-btn p-btn-sec" href="{% url 'panel:ventas' %}">Limpiar</a>{% endif %}
 </form>
 
 <div class="p-kpis">
@@ -35,6 +39,6 @@
       <br><span class="p-codigos">{{ v.codigos_resumen }}</span></div>
     <div class="p-monto">Bs. {{ v.total|floatformat:0 }}</div>
   </a>
-{% empty %}<p class="p-soft">No hay ventas con esos filtros.{% if f.q %} <a href="{% url 'panel:ventas' %}">Quitar la búsqueda</a>{% endif %}</p>{% endfor %}
+{% empty %}<p class="p-soft">No hay ventas con esos filtros.{% if f.q or f.desde or f.hasta or f.vendedor %} <a href="{% url 'panel:ventas' %}">{% if f.q %}Quitar la búsqueda{% else %}Quitar los filtros{% endif %}</a>{% endif %}</p>{% endfor %}
 </div>
 {% endblock %}

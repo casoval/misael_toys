@@ -317,22 +317,24 @@ def generar_pdf_cotizacion(cot):
     fotos = miniaturas_de([it.producto for it in items])
     con_fotos = bool(fotos)
     marcador = _marcador_sin_foto() if con_fotos else None
-    filas = [(["" ] if con_fotos else []) + ["Producto", "Cant.", "P. unitario", "Subtotal"]]
-    for it in items:
-        fila = []
+    # Primera columna: N° de ítem (1, 2, 3…), para ubicar rápido cada producto.
+    filas = [["N°"] + ([""] if con_fotos else []) + ["Producto", "Cant.", "P. unitario", "Subtotal"]]
+    for n, it in enumerate(items, start=1):
+        fila = [str(n)]
         if con_fotos:
             fila.append(Image(BytesIO(fotos.get(it.producto_id) or marcador), width=FOTO_MM * mm, height=FOTO_MM * mm))
         fila += [Paragraph(_nombre_con_codigo(it.producto), st["normal"]), str(it.cantidad),
                  _bs(it.precio_unitario), _bs(it.subtotal)]
         filas.append(fila)
     if con_fotos:
-        tabla = _tabla_items(filas, [16 * mm, 67 * mm, 16 * mm, 35 * mm, 35 * mm])
+        tabla = _tabla_items(filas, [9 * mm, 15 * mm, 62 * mm, 16 * mm, 34 * mm, 33 * mm])
         tabla.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (1, -1), "LEFT"),
+            ("ALIGN", (0, 0), (1, -1), "CENTER"), ("ALIGN", (2, 0), (2, -1), "LEFT"),
             ("TOPPADDING", (0, 1), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
         ]))
     else:
-        tabla = _tabla_items(filas, [81 * mm, 18 * mm, 35 * mm, 35 * mm])
+        tabla = _tabla_items(filas, [9 * mm, 76 * mm, 18 * mm, 33 * mm, 33 * mm])
+        tabla.setStyle(TableStyle([("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (1, -1), "LEFT")]))
     el += [tabla, Spacer(1, 4 * mm),
            _tabla_totales(cot.subtotal, cot.detalle_reglas, cot.descuento_extra, cot.total, st)]
 
@@ -374,12 +376,12 @@ def generar_pdf_recibo(venta):
         datos.append("<font color='#C0392B'><b>VENTA ANULADA</b></font>")
     el += [Paragraph("<br/>".join(datos), st["normal"]), Spacer(1, 4 * mm)]
 
-    filas = [["Cant.", "Cód.", "Producto", "P. unitario", "Subtotal"]]
-    for it in venta.items.select_related("producto"):
-        filas.append([str(it.cantidad), it.producto.codigo or "—", Paragraph(_esc(it.producto.nombre), st["normal"]),
+    filas = [["N°", "Cant.", "Cód.", "Producto", "P. unitario", "Subtotal"]]
+    for n, it in enumerate(venta.items.select_related("producto"), start=1):
+        filas.append([str(n), str(it.cantidad), it.producto.codigo or "—", Paragraph(_esc(it.producto.nombre), st["normal"]),
                       _bs(it.precio_unitario), _bs(it.subtotal)])
-    tabla = _tabla_items(filas, [14 * mm, 19 * mm, 66 * mm, 35 * mm, 35 * mm])
-    tabla.setStyle(TableStyle([("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (2, -1), "LEFT")]))
+    tabla = _tabla_items(filas, [9 * mm, 14 * mm, 19 * mm, 60 * mm, 33 * mm, 34 * mm])
+    tabla.setStyle(TableStyle([("ALIGN", (0, 0), (1, -1), "CENTER"), ("ALIGN", (2, 0), (3, -1), "LEFT")]))
     el += [tabla, Spacer(1, 3 * mm),
            _tabla_totales(venta.subtotal, venta.detalle_reglas, venta.descuento_extra, venta.total, st)]
 

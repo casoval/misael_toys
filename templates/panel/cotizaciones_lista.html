@@ -3,8 +3,19 @@
 {% block contenido %}
 <h1>Cotizaciones</h1>
 <form class="p-filtros" method="get">
-  <input type="search" name="q" value="{{ q }}" placeholder="Buscar por código, producto, cliente o N°…" autocomplete="off">
-  <button class="p-btn p-btn-sec" type="submit">Buscar</button>
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Buscar por código, producto, cliente, creador o N°…" autocomplete="off">
+  {% if user.is_staff %}
+  <select name="vendedor"><option value="">Todos los creadores</option>
+    {% for v in creadores %}<option value="{{ v.pk }}" {% if f.vendedor == v.pk|stringformat:"s" %}selected{% endif %}>{{ v.username }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  <label>Desde <input type="date" name="desde" value="{{ f.desde }}"></label>
+  <label>Hasta <input type="date" name="hasta" value="{{ f.hasta }}"></label>
+  <label>Ordenar por
+    <select name="orden">{% for clave, etiqueta in ordenes %}<option value="{{ clave }}" {% if f.orden == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}</select>
+  </label>
+  <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
+  {% if f.q or f.vendedor or f.desde or f.hasta or f.orden != "recientes" %}<a class="p-btn p-btn-sec" href="{% url 'panel:cotizaciones' %}">Limpiar</a>{% endif %}
   <a class="p-btn" href="{% url 'panel:cotizacion_nueva' %}">+ Nueva cotización</a>
 </form>
 <div class="p-lista">
@@ -15,6 +26,6 @@
       <br><span class="p-codigos">{{ c.codigos_resumen }}</span></div>
     <div class="p-monto">Bs. {{ c.total|floatformat:0 }}</div>
   </a>
-{% empty %}<p class="p-soft">{% if q %}No hay cotizaciones con esa búsqueda. <a href="{% url 'panel:cotizaciones' %}">Quitar la búsqueda</a>{% else %}Aún no hay cotizaciones.{% endif %}</p>{% endfor %}
+{% empty %}<p class="p-soft">{% if f.q or f.desde or f.hasta or f.vendedor %}No hay cotizaciones con esos filtros. <a href="{% url 'panel:cotizaciones' %}">{% if f.q %}Quitar la búsqueda{% else %}Quitar los filtros{% endif %}</a>{% else %}Aún no hay cotizaciones.{% endif %}</p>{% endfor %}
 </div>
 {% endblock %}

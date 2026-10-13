@@ -83,6 +83,13 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
     mensaje de WhatsApp de cada producto y como `sku` en los datos estructurados para Google.
   - **Se puede buscar** por código (o por parte de él) en el catálogo público, en Stock, Vender y
     Cotizar, en las listas de Ventas y Cotizaciones (también por nombre, cliente o N°) y en el admin.
+- **Orden y búsqueda**:
+  - Productos (Stock, Vender y Cotizar): por defecto A-Z por nombre, con selector «Ordenar» para
+    cambiar a nombre Z-A, código, precio, stock o más recientes (se recuerda la última elección).
+  - Listas de Ventas y Cotizaciones: más recientes por defecto; también por más antiguos, N°, monto,
+    cliente o vendedor/creador. Se busca por código, producto, cliente, vendedor/creador, observaciones
+    o N°, y se filtra por rango de fechas (Desde/Hasta) y por usuario (admin).
+- **PDFs numerados**: la cotización y el recibo llevan una columna «N°» con el ítem (1, 2, 3…).
 - **Tarjetas del panel**: compactas (foto, código, nombre, precio y stock por lugar), hasta 3 por fila
   en celular y muchas más en pantallas grandes. No muestran la descripción.
 - **Filtros** (Stock, Vender y Cotizar): los mismos que se van generando en el catálogo público —

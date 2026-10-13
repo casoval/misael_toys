@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
 
@@ -9,6 +10,7 @@ from django.contrib.auth.views import LoginView
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -282,33 +284,71 @@ def _ventas_visibles(request):
     return qs
 
 
-def _buscar_en_documento(texto, modelo_item, campo_documento):
+def _buscar_en_documento(texto, modelo_item, campo_documento, campo_usuario):
     """Condición para buscar ventas/cotizaciones por el CÓDIGO o el nombre de alguno de sus productos,
-    por cliente o por número. Usa una subconsulta (no un JOIN) para que los totales no se dupliquen."""
+    por cliente, por usuario (vendedor/creador), por observaciones o por número. Usa una subconsulta
+    (no un JOIN) para que los totales no se dupliquen."""
     con_producto = modelo_item.objects.filter(
         Q(producto__codigo__icontains=texto) | Q(producto__nombre__icontains=texto)
     ).values(campo_documento)
-    condicion = Q(pk__in=con_producto) | Q(cliente__icontains=texto)
+    condicion = (Q(pk__in=con_producto) | Q(cliente__icontains=texto)
+                 | Q(observaciones__icontains=texto) | Q(**{f"{campo_usuario}__username__icontains": texto}))
     numero = texto.lstrip("#").strip()
     if numero.isdigit():
         condicion |= Q(pk=int(numero))
     return condicion
 
 
-@login_required
-def ventas_lista(request):
-    qs = _ventas_visibles(request)
-    vendedor = request.GET.get("vendedor", "")
-    desde, hasta = request.GET.get("desde", ""), request.GET.get("hasta", "")
+def _fecha(texto):
+    """'2026-10-13' → date; si viene vacío o mal escrito, None (así nunca da error 500)."""
+    try:
+        return date.fromisoformat((texto or "").strip())
+    except ValueError:
+        return None
+
+
+def _orden_documentos(campo_usuario):
+    """Opciones de orden para las listas de Ventas y Cotizaciones: {clave: (etiqueta, campos)}."""
+    return {
+        "recientes": ("Más recientes primero", ("-creado", "-id")),
+        "antiguos": ("Más antiguos primero", ("creado", "id")),
+        "numero": ("N° (menor a mayor)", ("id",)),
+        "total_desc": ("Mayor monto primero", ("-total", "-id")),
+        "total_asc": ("Menor monto primero", ("total", "id")),
+        "cliente": ("Cliente (A-Z)", (Lower("cliente"), "-id")),
+        "usuario": ("Vendedor (A-Z)" if campo_usuario == "vendedor" else "Creador (A-Z)",
+                    (Lower(f"{campo_usuario}__username"), "-id")),
+    }
+
+
+def _filtrar_y_ordenar(request, qs, modelo_item, campo_documento, campo_usuario):
+    """Búsqueda, rango de fechas, usuario y orden, compartidos por Ventas y Cotizaciones."""
     texto = request.GET.get("q", "").strip()
+    usuario = request.GET.get("vendedor", "")
+    desde, hasta = _fecha(request.GET.get("desde")), _fecha(request.GET.get("hasta"))
+    ordenes = _orden_documentos(campo_usuario)
+    orden = request.GET.get("orden", "")
+    if orden not in ordenes:
+        orden = "recientes"
     if texto:
-        qs = qs.filter(_buscar_en_documento(texto, VentaItem, "venta_id"))
-    if request.user.is_staff and vendedor.isdigit():
-        qs = qs.filter(vendedor_id=int(vendedor))
+        qs = qs.filter(_buscar_en_documento(texto, modelo_item, campo_documento, campo_usuario))
+    if request.user.is_staff and usuario.isdigit():
+        qs = qs.filter(**{f"{campo_usuario}_id": int(usuario)})
     if desde:
         qs = qs.filter(creado__date__gte=desde)
     if hasta:
         qs = qs.filter(creado__date__lte=hasta)
+    qs = qs.order_by(*ordenes[orden][1])
+    filtros = {
+        "q": texto, "vendedor": usuario, "orden": orden,
+        "desde": desde.isoformat() if desde else "", "hasta": hasta.isoformat() if hasta else "",
+    }
+    return qs, filtros, [(k, v[0]) for k, v in ordenes.items()]
+
+
+@login_required
+def ventas_lista(request):
+    qs, filtros, ordenes = _filtrar_y_ordenar(request, _ventas_visibles(request), VentaItem, "venta_id", "vendedor")
 
     validas = qs.filter(anulada=False)
     resumen = validas.aggregate(total=Sum("total"), n=Count("id"))
@@ -321,7 +361,7 @@ def ventas_lista(request):
     return render(request, "panel/ventas_lista.html", {
         "ventas": qs[:200], "resumen": resumen, "unidades": unidades, "por_vendedor": por_vendedor,
         "vendedores": User.objects.filter(ventas__isnull=False).distinct() if request.user.is_staff else [],
-        "f": {"vendedor": vendedor, "desde": desde, "hasta": hasta, "q": texto},
+        "f": filtros, "ordenes": ordenes,
     })
 
 
@@ -388,11 +428,12 @@ def _cotizaciones_visibles(request):
 
 @login_required
 def cotizaciones_lista(request):
-    texto = request.GET.get("q", "").strip()
-    cotizaciones = _cotizaciones_visibles(request)
-    if texto:
-        cotizaciones = cotizaciones.filter(_buscar_en_documento(texto, CotizacionItem, "cotizacion_id"))
-    return render(request, "panel/cotizaciones_lista.html", {"cotizaciones": cotizaciones[:200], "q": texto})
+    cotizaciones, filtros, ordenes = _filtrar_y_ordenar(
+        request, _cotizaciones_visibles(request), CotizacionItem, "cotizacion_id", "creador")
+    return render(request, "panel/cotizaciones_lista.html", {
+        "cotizaciones": cotizaciones[:200], "f": filtros, "ordenes": ordenes,
+        "creadores": User.objects.filter(cotizaciones__isnull=False).distinct() if request.user.is_staff else [],
+    })
 
 
 @login_required
