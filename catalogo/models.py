@@ -220,7 +220,8 @@ class Producto(models.Model):
         ordering = ["-destacado", "orden", "-creado"]
 
     def __str__(self):
-        return self.nombre
+        # Con el código por delante, en todos los selectores y listas del admin: "J012 · Nombre"
+        return f"{self.codigo} · {self.nombre}" if self.codigo else self.nombre
 
     # --- Código interno (J001, J002…) ---
     PREFIJO_CODIGO = "J"

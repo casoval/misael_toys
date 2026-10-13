@@ -825,3 +825,103 @@ class FotosEnCotizacionTests(Base):
         v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1)])
         from .pdf import generar_pdf_recibo
         self.assertEqual(generar_pdf_recibo(v).count(b"/Subtype /Image"), base)  # solo el logo
+
+
+class BuscarPorCodigoEnElPanelTests(Base):
+    """El código se puede buscar en ventas, cotizaciones y en el admin."""
+
+    def setUp(self):
+        super().setUp()
+        servicios.registrar_ingreso(self.p1, self.casa, 50, self.admin)
+        servicios.registrar_ingreso(self.p2, self.casa, 50, self.admin)
+        self.v1 = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 2)], cliente="María")
+        self.v2 = servicios.registrar_venta(self.ana, [self.item(self.p2, self.casa, 1)], cliente="Pedro")
+        self.v3 = servicios.registrar_venta(
+            self.ana, [self.item(self.p1, self.casa, 1), self.item(self.p2, self.casa, 1)], cliente="Luz")
+        self.c1 = servicios.crear_cotizacion(self.ana, [self.item(self.p1, None, 1)], cliente="Escuela")
+        self.c2 = servicios.crear_cotizacion(self.ana, [self.item(self.p2, None, 3)], cliente="Colegio")
+        self.client.login(username="admin", password="x")
+
+    def ids(self, r, lista):
+        return sorted(o.pk for o in r.context[lista])
+
+    def test_ventas_se_busca_por_codigo(self):
+        r = self.client.get(reverse("panel:ventas"), {"q": self.p1.codigo})
+        self.assertEqual(self.ids(r, "ventas"), sorted([self.v1.pk, self.v3.pk]))
+
+    def test_ventas_se_busca_por_nombre_cliente_y_numero(self):
+        url = reverse("panel:ventas")
+        self.assertEqual(self.ids(self.client.get(url, {"q": "cubo"}), "ventas"), sorted([self.v2.pk, self.v3.pk]))
+        self.assertEqual(self.ids(self.client.get(url, {"q": "mar"}), "ventas"), [self.v1.pk])   # cliente "María"
+        self.assertEqual(self.ids(self.client.get(url, {"q": f"#{self.v2.pk}"}), "ventas"), [self.v2.pk])
+
+    def test_la_busqueda_en_ventas_no_duplica_los_totales(self):
+        # v3 tiene los dos productos: coincide por ambos, pero cuenta una sola vez
+        r = self.client.get(reverse("panel:ventas"), {"q": "J00"})
+        self.assertEqual(r.context["resumen"]["n"], 3)
+        self.assertEqual(r.context["resumen"]["total"], self.v1.total + self.v2.total + self.v3.total)
+
+    def test_ventas_busqueda_sin_resultados_ofrece_quitarla(self):
+        r = self.client.get(reverse("panel:ventas"), {"q": "ZZZ999"})
+        self.assertContains(r, "Quitar la búsqueda")
+
+    def test_cotizaciones_se_busca_por_codigo_y_cliente(self):
+        url = reverse("panel:cotizaciones")
+        self.assertEqual(self.ids(self.client.get(url, {"q": self.p2.codigo}), "cotizaciones"), [self.c2.pk])
+        self.assertEqual(self.ids(self.client.get(url, {"q": "escuela"}), "cotizaciones"), [self.c1.pk])
+        self.assertEqual(self.ids(self.client.get(url), "cotizaciones"), sorted([self.c1.pk, self.c2.pk]))
+
+    def test_el_vendedor_solo_encuentra_lo_suyo(self):
+        otro = servicios.registrar_venta(self.luis, [self.item(self.p1, self.casa, 1)])
+        self.client.login(username="luis", password="x")
+        r = self.client.get(reverse("panel:ventas"), {"q": self.p1.codigo})
+        self.assertEqual(self.ids(r, "ventas"), [otro.pk])
+
+    def test_las_listas_muestran_los_codigos_de_cada_documento(self):
+        r = self.client.get(reverse("panel:ventas"))
+        self.assertContains(r, f'<span class="p-codigos">{self.p1.codigo} · {self.p2.codigo}</span>')
+        r = self.client.get(reverse("panel:cotizaciones"))
+        self.assertContains(r, f'<span class="p-codigos">{self.p1.codigo}</span>')
+
+    def test_el_resumen_de_codigos_se_acorta_con_muchos_productos(self):
+        productos = [Producto.objects.create(nombre=f"Extra {i}", precio=D("3")) for i in range(7)]
+        v = servicios.registrar_venta(self.ana, [self.item(p, None, 1) for p in productos])
+        v = Venta.objects.prefetch_related("items__producto").get(pk=v.pk)
+        self.assertTrue(v.codigos_resumen.endswith("+3"))
+        self.assertEqual(v.codigos_resumen.count("·"), 3)
+
+    def test_las_listas_no_hacen_consultas_por_cada_venta(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        url = reverse("panel:ventas")
+        self.client.get(url)
+        with CaptureQueriesContext(connection) as pocas:
+            self.client.get(url)
+        for _ in range(6):
+            servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1), self.item(self.p2, self.casa, 1)])
+        with CaptureQueriesContext(connection) as muchas:
+            self.client.get(url)
+        self.assertEqual(len(pocas), len(muchas))
+
+    def test_el_admin_busca_ventas_y_cotizaciones_por_codigo(self):
+        from django.contrib.auth import get_user_model
+        get_user_model().objects.create_superuser("root", "r@r.com", "x")
+        self.client.login(username="root", password="x")
+        r = self.client.get("/admin/inventario/venta/", {"q": self.p2.codigo})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["cl"].result_count, 2)   # v2 y v3
+        r = self.client.get("/admin/inventario/cotizacion/", {"q": self.p2.codigo})
+        self.assertEqual(r.context["cl"].result_count, 1)
+
+    def test_el_pdf_de_cotizacion_lleva_el_codigo_junto_al_nombre(self):
+        from .pdf import _nombre_con_codigo, generar_pdf_cotizacion
+        texto = _nombre_con_codigo(self.p1)
+        self.assertIn("Pop it", texto)
+        self.assertIn(self.p1.codigo, texto)
+        self.assertTrue(generar_pdf_cotizacion(self.c1).startswith(b"%PDF"))
+
+    def test_producto_sin_codigo_no_rompe_el_pdf(self):
+        from .pdf import _nombre_con_codigo
+        Producto.objects.filter(pk=self.p2.pk).update(codigo=None)
+        self.p2.refresh_from_db()
+        self.assertEqual(_nombre_con_codigo(self.p2), "Cubo")

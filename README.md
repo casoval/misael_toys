@@ -72,13 +72,17 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   grandes los productos van a la izquierda y el detalle con el total a la derecha (siempre
   visible); en celular, el total queda fijo abajo en una barra delgada y las opciones
   (descuento, cliente, notas) empiezan cerradas para hacer menos scroll.
-- **Código interno** (J001, J002…): cada producto tiene un número de ítem para control interno.
-  Es opcional: si lo dejas vacío se genera solo (el siguiente libre), y también puedes escribir el
-  que quieras (ej. J025 o KIT-01; se guarda en mayúsculas y no se puede repetir). No se muestra en
-  el sitio público. Aparece en las tarjetas del panel, en el detalle de ventas y cotizaciones y en el
-  recibo, y el buscador del panel encuentra por nombre o por código. Se edita en *Admin → Productos*
-  (al crear uno, el admin ya sugiere el siguiente). Los productos existentes se numeran al actualizar
+- **Código de producto** (J001, J002…): cada producto tiene un código único. Es opcional: si lo dejas
+  vacío se genera solo (el siguiente libre), y también puedes escribir el que quieras (ej. J025 o
+  KIT-01; se guarda en mayúsculas y no se puede repetir). Se edita en *Admin → Productos* (al crear
+  uno, el admin ya sugiere el siguiente); los productos existentes se numeran al actualizar
   (`migrate`), en orden de creación.
+  - **Se muestra** de forma discreta (pequeño y en gris) donde aparece el nombre: en las tarjetas del
+    catálogo (junto al precio), bajo el título de la ficha, en «otros productos», en el panel, en el
+    detalle de ventas y cotizaciones, en el recibo y en la cotización en PDF. También viaja en el
+    mensaje de WhatsApp de cada producto y como `sku` en los datos estructurados para Google.
+  - **Se puede buscar** por código (o por parte de él) en el catálogo público, en Stock, Vender y
+    Cotizar, en las listas de Ventas y Cotizaciones (también por nombre, cliente o N°) y en el admin.
 - **Tarjetas del panel**: compactas (foto, código, nombre, precio y stock por lugar), hasta 3 por fila
   en celular y muchas más en pantallas grandes. No muestran la descripción.
 - **Filtros** (Stock, Vender y Cotizar): los mismos que se van generando en el catálogo público —

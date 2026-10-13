@@ -44,7 +44,9 @@ def _productos_filtrados(request):
     q = request.GET.get("q", "").strip()
     if q:
         from django.db.models import Q
-        productos = productos.filter(Q(nombre__icontains=q) | Q(descripcion__icontains=q))
+        productos = productos.filter(
+            Q(nombre__icontains=q) | Q(descripcion__icontains=q) | Q(codigo__icontains=q)
+        )
 
     # Categoría
     categoria_slug = request.GET.get("categoria", "").strip()
@@ -181,7 +183,9 @@ def producto_detalle(request, slug):
     config = ConfiguracionSitio.get()
 
     # Un botón por cada WhatsApp configurado (1 o 2)
-    mensaje = config.mensaje_whatsapp_base.format(producto=producto.nombre)
+    # El código viaja en el mensaje: quien atiende el WhatsApp sabe exactamente de qué producto se trata
+    nombre_msg = f"{producto.nombre} (código {producto.codigo})" if producto.codigo else producto.nombre
+    mensaje = config.mensaje_whatsapp_base.format(producto=nombre_msg)
     whatsapp_opciones = [
         {"titulo": w["titulo"], "url": f"https://wa.me/{w['numero']}?text={quote(mensaje)}"}
         for w in config.whatsapps

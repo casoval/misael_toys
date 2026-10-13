@@ -5,6 +5,7 @@ from django.test import TestCase
 from pathlib import Path
 
 from django.conf import settings
+from django.urls import reverse
 
 from .models import Categoria, ConfiguracionSitio, Producto
 
@@ -216,11 +217,6 @@ class CodigoInternoTests(TestCase):
         import_module("catalogo.migrations.0011_asignar_codigos").asignar_codigos(apps, None)
         self.assertEqual(list(Producto.objects.order_by("id").values_list("codigo", flat=True)), ["J001", "J002", "J003"])
 
-    def test_el_codigo_no_se_muestra_en_el_sitio_publico(self):
-        p = self.crear("Cubo sensorial")
-        for url in ("/", p.get_absolute_url()):
-            self.assertNotContains(self.client.get(url), p.codigo)
-
     def test_el_admin_sugiere_el_siguiente_codigo_y_busca_por_codigo(self):
         from django.contrib.auth import get_user_model
         get_user_model().objects.create_superuser("root", "r@r.com", "x")
@@ -264,3 +260,84 @@ class EstilosDelCatalogoTests(TestCase):
         r = self.client.get(p.get_absolute_url())
         for clase in ("detalle-colores", "colores-grid", "color-item", "swatch-color", "color-nombre"):
             self.assertContains(r, clase)
+
+
+class CodigoVisibleEnElCatalogoTests(TestCase):
+    """El código es público pero discreto: junto al precio, bajo el título, y se puede buscar por él."""
+
+    def setUp(self):
+        self.cat = Categoria.objects.create(nombre="Táctil")
+        self.p1 = Producto.objects.create(nombre="Cubo sensorial", precio=Decimal("45"), categoria=self.cat)
+        self.p2 = Producto.objects.create(nombre="Espiral visual", precio=Decimal("38"), categoria=self.cat)
+        self.config = ConfiguracionSitio.get()
+
+    def url_categoria(self):
+        return reverse("catalogo:categoria_detalle", args=[self.cat.slug])
+
+    def test_la_tarjeta_muestra_el_codigo_junto_al_precio(self):
+        r = self.client.get("/")
+        self.assertContains(r, f'<span class="tarjeta-codigo" title="Código del producto">{self.p1.codigo}</span>')
+        self.assertContains(r, f'<span class="tarjeta-codigo" title="Código del producto">{self.p2.codigo}</span>')
+        self.assertContains(r, 'class="tarjeta-pie"')
+
+    def test_las_paginas_de_categoria_tambien_lo_muestran(self):
+        r = self.client.get(self.url_categoria())
+        self.assertContains(r, f'>{self.p1.codigo}</span>')
+
+    def test_la_ficha_muestra_el_codigo_bajo_el_titulo(self):
+        r = self.client.get(self.p1.get_absolute_url())
+        self.assertContains(r, f'Cód. <b>{self.p1.codigo}</b>')
+        html = r.content.decode()
+        self.assertLess(html.index("<h1>Cubo sensorial</h1>"), html.index("detalle-codigo"))
+
+    def test_los_productos_relacionados_tambien_muestran_su_codigo(self):
+        r = self.client.get(self.p1.get_absolute_url())
+        relacionados = r.content.decode().split('class="relacionados"')[1]
+        self.assertIn(f'>{self.p2.codigo}</span>', relacionados)
+
+    def test_se_busca_por_codigo_en_el_catalogo(self):
+        r = self.client.get("/", {"q": self.p2.codigo})
+        self.assertContains(r, "Espiral visual")
+        self.assertNotContains(r, "Cubo sensorial")
+
+    def test_la_busqueda_por_codigo_no_distingue_mayusculas_ni_espacios_sobrantes(self):
+        r = self.client.get("/", {"q": f"  {self.p1.codigo.lower()} "})
+        self.assertContains(r, "Cubo sensorial")
+        self.assertNotContains(r, "Espiral visual")
+
+    def test_la_busqueda_por_parte_del_codigo_encuentra_varios(self):
+        r = self.client.get("/", {"q": "J00"})
+        self.assertContains(r, "Cubo sensorial")
+        self.assertContains(r, "Espiral visual")
+
+    def test_se_busca_por_codigo_tambien_dentro_de_una_categoria(self):
+        r = self.client.get(self.url_categoria(), {"q": self.p1.codigo})
+        self.assertContains(r, "Cubo sensorial")
+        self.assertNotContains(r, "Espiral visual")
+
+    def test_el_buscador_avisa_que_acepta_codigo(self):
+        self.assertContains(self.client.get("/"), "Buscar por nombre o código")
+
+    def test_el_mensaje_de_whatsapp_incluye_el_codigo(self):
+        from urllib.parse import parse_qs, urlparse
+        self.config.whatsapp_numero = "59171234567"
+        self.config.save()
+        r = self.client.get(self.p1.get_absolute_url())
+        url = r.context["whatsapp_url"]
+        mensaje = parse_qs(urlparse(url).query)["text"][0]
+        self.assertIn("Cubo sensorial", mensaje)
+        self.assertIn(f"(código {self.p1.codigo})", mensaje)
+
+    def test_el_esquema_de_google_usa_el_codigo_como_sku(self):
+        r = self.client.get(self.p1.get_absolute_url())
+        self.assertContains(r, f'"sku": "{self.p1.codigo}"')
+
+    def test_str_del_producto_lleva_el_codigo(self):
+        self.assertEqual(str(self.p1), f"{self.p1.codigo} · Cubo sensorial")
+        self.p1.codigo = None
+        self.assertEqual(str(self.p1), "Cubo sensorial")
+
+    def test_el_css_define_el_estilo_discreto_del_codigo(self):
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        for clase in (".tarjeta-pie", ".tarjeta-codigo", ".detalle-codigo"):
+            self.assertIn(clase, css)

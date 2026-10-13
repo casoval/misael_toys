@@ -142,6 +142,12 @@ def _esc(texto):
     return (texto or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _nombre_con_codigo(producto):
+    """Nombre del producto con su código al lado, pequeño y en gris (discreto pero a la vista)."""
+    codigo = f' <font size="7.5" color="#8F8778">&nbsp;{_esc(producto.codigo)}</font>' if producto.codigo else ""
+    return _esc(producto.nombre) + codigo
+
+
 def _estilos():
     base = getSampleStyleSheet()["Normal"]
     normal = ParagraphStyle("n", parent=base, fontName="Helvetica", fontSize=10, leading=14)
@@ -316,7 +322,7 @@ def generar_pdf_cotizacion(cot):
         fila = []
         if con_fotos:
             fila.append(Image(BytesIO(fotos.get(it.producto_id) or marcador), width=FOTO_MM * mm, height=FOTO_MM * mm))
-        fila += [Paragraph(_esc(it.producto.nombre), st["normal"]), str(it.cantidad),
+        fila += [Paragraph(_nombre_con_codigo(it.producto), st["normal"]), str(it.cantidad),
                  _bs(it.precio_unitario), _bs(it.subtotal)]
         filas.append(fila)
     if con_fotos:

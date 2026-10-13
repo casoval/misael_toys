@@ -33,7 +33,10 @@
       <div class="tarjeta-nombre">{{ producto.nombre }}</div>
       {% if producto.descripcion_corta %}<div class="tarjeta-desc">{{ producto.descripcion_corta }}</div>{% endif %}
       {% if producto.medidas_resumen %}<div class="tarjeta-medidas">📏 {{ producto.medidas_resumen }}</div>{% endif %}
-      <div class="tarjeta-precio">Bs. {{ producto.precio|floatformat:'-2' }}</div>
+      <div class="tarjeta-pie">
+        <div class="tarjeta-precio">Bs. {{ producto.precio|floatformat:'-2' }}</div>
+        {% if producto.codigo %}<span class="tarjeta-codigo" title="Código del producto">{{ producto.codigo }}</span>{% endif %}
+      </div>
     </div>
   </a>
   {% endfor %}

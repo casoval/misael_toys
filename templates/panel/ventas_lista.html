@@ -3,6 +3,7 @@
 {% block contenido %}
 <h1>{% if user.is_staff %}Ventas{% else %}Mis ventas{% endif %}</h1>
 <form class="p-filtros" method="get">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Buscar por código, producto, cliente o N°…" autocomplete="off">
   {% if user.is_staff %}
   <select name="vendedor"><option value="">Todos los vendedores</option>
     {% for v in vendedores %}<option value="{{ v.pk }}" {% if f.vendedor == v.pk|stringformat:"s" %}selected{% endif %}>{{ v.username }}</option>{% endfor %}
@@ -30,9 +31,10 @@
   <a class="p-fila-venta {% if v.anulada %}anulada{% endif %}" href="{% url 'panel:venta_detalle' v.pk %}">
     <div><strong>#{{ v.pk }}</strong> <span class="p-soft">{{ v.creado|date:"d/m/Y H:i" }}</span>
       {% if v.anulada %}<span class="p-tag">ANULADA</span>{% elif v.tiene_faltante %}<span class="p-tag warn">SIN STOCK</span>{% endif %}<br>
-      <span class="p-soft">{{ v.vendedor.username|default:"—" }}{% if v.cliente %} → {{ v.cliente }}{% endif %} · {{ v.unidades }} unid.</span></div>
+      <span class="p-soft">{{ v.vendedor.username|default:"—" }}{% if v.cliente %} → {{ v.cliente }}{% endif %} · {{ v.unidades }} unid.</span>
+      <br><span class="p-codigos">{{ v.codigos_resumen }}</span></div>
     <div class="p-monto">Bs. {{ v.total|floatformat:0 }}</div>
   </a>
-{% empty %}<p class="p-soft">No hay ventas con esos filtros.</p>{% endfor %}
+{% empty %}<p class="p-soft">No hay ventas con esos filtros.{% if f.q %} <a href="{% url 'panel:ventas' %}">Quitar la búsqueda</a>{% endif %}</p>{% endfor %}
 </div>
 {% endblock %}

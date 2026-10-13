@@ -153,7 +153,7 @@ def seo_producto(producto, config):
         "@type": "Product",
         "name": producto.nombre,
         "description": descripcion,
-        "sku": producto.slug,
+        "sku": producto.codigo or producto.slug,
         "url": url,
         "brand": {"@type": "Brand", "name": tienda},
         "offers": {

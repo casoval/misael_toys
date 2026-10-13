@@ -18,7 +18,7 @@ from catalogo.models import Atributo, Categoria, Producto, ValorAtributo
 from . import servicios
 from .fotos import foto_panel
 from .lineas import leer_decimal, leer_lineas
-from .models import Cotizacion, MovimientoStock, Stock, Ubicacion, Venta, VentaItem
+from .models import Cotizacion, CotizacionItem, MovimientoStock, Stock, Ubicacion, Venta, VentaItem
 from .pdf import generar_pdf_cotizacion, generar_pdf_recibo
 from .servicios import ErrorNegocio
 
@@ -276,10 +276,23 @@ def venta_nueva(request):
 
 
 def _ventas_visibles(request):
-    qs = Venta.objects.select_related("vendedor").prefetch_related("items")
+    qs = Venta.objects.select_related("vendedor").prefetch_related("items__producto")
     if not request.user.is_staff:
         qs = qs.filter(vendedor=request.user)
     return qs
+
+
+def _buscar_en_documento(texto, modelo_item, campo_documento):
+    """Condición para buscar ventas/cotizaciones por el CÓDIGO o el nombre de alguno de sus productos,
+    por cliente o por número. Usa una subconsulta (no un JOIN) para que los totales no se dupliquen."""
+    con_producto = modelo_item.objects.filter(
+        Q(producto__codigo__icontains=texto) | Q(producto__nombre__icontains=texto)
+    ).values(campo_documento)
+    condicion = Q(pk__in=con_producto) | Q(cliente__icontains=texto)
+    numero = texto.lstrip("#").strip()
+    if numero.isdigit():
+        condicion |= Q(pk=int(numero))
+    return condicion
 
 
 @login_required
@@ -287,6 +300,9 @@ def ventas_lista(request):
     qs = _ventas_visibles(request)
     vendedor = request.GET.get("vendedor", "")
     desde, hasta = request.GET.get("desde", ""), request.GET.get("hasta", "")
+    texto = request.GET.get("q", "").strip()
+    if texto:
+        qs = qs.filter(_buscar_en_documento(texto, VentaItem, "venta_id"))
     if request.user.is_staff and vendedor.isdigit():
         qs = qs.filter(vendedor_id=int(vendedor))
     if desde:
@@ -305,7 +321,7 @@ def ventas_lista(request):
     return render(request, "panel/ventas_lista.html", {
         "ventas": qs[:200], "resumen": resumen, "unidades": unidades, "por_vendedor": por_vendedor,
         "vendedores": User.objects.filter(ventas__isnull=False).distinct() if request.user.is_staff else [],
-        "f": {"vendedor": vendedor, "desde": desde, "hasta": hasta},
+        "f": {"vendedor": vendedor, "desde": desde, "hasta": hasta, "q": texto},
     })
 
 
@@ -366,13 +382,17 @@ def cotizacion_nueva(request):
 
 
 def _cotizaciones_visibles(request):
-    qs = Cotizacion.objects.select_related("creador").prefetch_related("items")
+    qs = Cotizacion.objects.select_related("creador").prefetch_related("items__producto")
     return qs if request.user.is_staff else qs.filter(creador=request.user)
 
 
 @login_required
 def cotizaciones_lista(request):
-    return render(request, "panel/cotizaciones_lista.html", {"cotizaciones": _cotizaciones_visibles(request)[:200]})
+    texto = request.GET.get("q", "").strip()
+    cotizaciones = _cotizaciones_visibles(request)
+    if texto:
+        cotizaciones = cotizaciones.filter(_buscar_en_documento(texto, CotizacionItem, "cotizacion_id"))
+    return render(request, "panel/cotizaciones_lista.html", {"cotizaciones": cotizaciones[:200], "q": texto})
 
 
 @login_required

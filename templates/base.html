@@ -40,7 +40,7 @@
       </a>
 
       <form class="buscador" method="get" action="{% url 'catalogo:home' %}">
-        <input type="search" name="q" placeholder="Buscar productos..." value="{{ q_actual }}">
+        <input type="search" name="q" placeholder="Buscar por nombre o código..." value="{{ q_actual }}">
         {% if categoria_actual %}<input type="hidden" name="categoria" value="{{ categoria_actual }}">{% endif %}
         {% if precio_min_actual %}<input type="hidden" name="precio_min" value="{{ precio_min_actual }}">{% endif %}
         {% if precio_max_actual %}<input type="hidden" name="precio_max" value="{{ precio_max_actual }}">{% endif %}

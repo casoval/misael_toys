@@ -1750,3 +1750,35 @@ body.sin-scroll {
   .color-item, .swatch-color { transition: none; }
   .color-item:hover, .color-item:hover .swatch-color { transform: none; }
 }
+
+
+/* --- Código del producto: pequeño y discreto (junto al precio y bajo el título) --- */
+.tarjeta-pie {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+}
+.tarjeta-pie .tarjeta-precio { margin-top: 0; }
+
+.tarjeta-codigo {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #8F8778;
+  white-space: nowrap;
+}
+
+.detalle-codigo {
+  font-size: 0.8rem;
+  color: #8F8778;
+  letter-spacing: 0.03em;
+  margin: -0.2rem 0 0.6rem;
+}
+.detalle-codigo b { font-weight: 700; color: #7A7366; letter-spacing: 0.06em; }
+
+@media (max-width: 599px) {
+  .tarjeta-pie { margin-top: 0.2rem; }
+  .tarjeta-codigo { font-size: 0.62rem; }
+}

@@ -33,7 +33,7 @@ class StockAdmin(admin.ModelAdmin):
     # Solo lectura: el stock se mueve desde el panel para que quede historial.
     list_display = ("producto", "ubicacion", "cantidad")
     list_filter = ("ubicacion",)
-    search_fields = ("producto__nombre",)
+    search_fields = ("producto__codigo", "producto__nombre")
 
     def has_add_permission(self, request):
         return False
@@ -49,7 +49,7 @@ class StockAdmin(admin.ModelAdmin):
 class MovimientoStockAdmin(admin.ModelAdmin):
     list_display = ("creado", "producto", "ubicacion", "cantidad", "tipo", "usuario", "nota")
     list_filter = ("tipo", "ubicacion")
-    search_fields = ("producto__nombre", "nota")
+    search_fields = ("producto__codigo", "producto__nombre", "nota")
 
     def has_add_permission(self, request):
         return False
@@ -75,6 +75,7 @@ class VentaItemInline(admin.TabularInline):
 class VentaAdmin(admin.ModelAdmin):
     list_display = ("id", "creado", "vendedor", "cliente", "total", "anulada")
     list_filter = ("anulada", "vendedor")
+    search_fields = ("cliente", "items__producto__codigo", "items__producto__nombre", "vendedor__username")
     inlines = [VentaItemInline]
     readonly_fields = [f.name for f in Venta._meta.fields]
 
@@ -98,6 +99,7 @@ class CotizacionItemInline(admin.TabularInline):
 @admin.register(Cotizacion)
 class CotizacionAdmin(admin.ModelAdmin):
     list_display = ("id", "creado", "creador", "cliente", "total")
+    search_fields = ("cliente", "items__producto__codigo", "items__producto__nombre", "creador__username")
     inlines = [CotizacionItemInline]
     readonly_fields = [f.name for f in Cotizacion._meta.fields]
 

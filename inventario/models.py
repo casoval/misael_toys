@@ -173,6 +173,14 @@ class Venta(models.Model):
         return sum(i.cantidad for i in self.items.all())
 
     @property
+    def codigos_resumen(self):
+        """Códigos de los productos, para verlos de un vistazo en las listas: 'J001 · J004 +2'.
+        (usa los ítems ya precargados: sin consultas extra)"""
+        codigos = [i.producto.codigo or i.producto.nombre for i in self.items.all()]
+        texto = " · ".join(codigos[:4])
+        return texto + (f" +{len(codigos) - 4}" if len(codigos) > 4 else "")
+
+    @property
     def tiene_faltante(self):
         return any(i.faltante for i in self.items.all())
 
@@ -235,6 +243,14 @@ class Cotizacion(models.Model):
     @property
     def unidades(self):
         return sum(i.cantidad for i in self.items.all())
+
+    @property
+    def codigos_resumen(self):
+        """Códigos de los productos, para verlos de un vistazo en las listas: 'J001 · J004 +2'.
+        (usa los ítems ya precargados: sin consultas extra)"""
+        codigos = [i.producto.codigo or i.producto.nombre for i in self.items.all()]
+        texto = " · ".join(codigos[:4])
+        return texto + (f" +{len(codigos) - 4}" if len(codigos) > 4 else "")
 
     @property
     def descuento_total(self):

@@ -42,6 +42,7 @@
       {% endif %}
       {% if producto.categoria %}<span class="tarjeta-categoria" style="background:{{ producto.categoria.color_fondo }};">{{ producto.categoria.nombre }}</span>{% endif %}
       <h1>{{ producto.nombre }}</h1>
+      {% if producto.codigo %}<div class="detalle-codigo" title="Código del producto">Cód. <b>{{ producto.codigo }}</b></div>{% endif %}
       <div class="detalle-precio-fila">
         <div class="detalle-precio">Bs. {{ producto.precio|floatformat:'-2' }}</div>
         {% include "catalogo/_boton_like.html" %}
@@ -148,7 +149,10 @@
         </div>
         <div class="tarjeta-cuerpo">
           <div class="tarjeta-nombre">{{ r.nombre }}</div>
-          <div class="tarjeta-precio">Bs. {{ r.precio|floatformat:'-2' }}</div>
+          <div class="tarjeta-pie">
+            <div class="tarjeta-precio">Bs. {{ r.precio|floatformat:'-2' }}</div>
+            {% if r.codigo %}<span class="tarjeta-codigo" title="Código del producto">{{ r.codigo }}</span>{% endif %}
+          </div>
         </div>
       </a>
       {% endfor %}

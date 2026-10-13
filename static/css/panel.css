@@ -84,6 +84,7 @@ body.panel { background: var(--bg); }
 .p-chip.neg { background: #fdecea; color: #c0392b; }
 .p-tag { display: inline-block; background: var(--teal); color: #fff; border-radius: .3rem; padding: 0 .4rem; font-size: .72rem; font-weight: 700; vertical-align: middle; }
 .p-tag.warn { background: #c77a16; }
+.p-codigos { font-size: .72rem; font-weight: 700; letter-spacing: .03em; color: var(--teal-dark); }
 .p-tag-cod { background: #E3F4F1; color: var(--teal-dark); font-weight: 800; letter-spacing: .03em; }
 
 .p-linea { display: flex; flex-wrap: wrap; gap: .2rem .9rem; padding: .35rem 0; border-bottom: 1px solid #f0ece2; align-items: baseline; font-size: .9rem; }
