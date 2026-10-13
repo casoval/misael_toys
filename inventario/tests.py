@@ -1028,3 +1028,28 @@ class OrdenBusquedaYNumeracionTests(Base):
         from .pdf import generar_pdf_recibo
         v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1), self.item(self.p2, self.casa, 2)])
         self.assertEqual(self._numeros_de_pdf(generar_pdf_recibo, v), ["N°", "1", "2", ])
+
+
+class DetalleEnTablaNumeradaTests(Base):
+    def setUp(self):
+        super().setUp()
+        servicios.registrar_ingreso(self.p1, self.casa, 50, self.admin)
+        servicios.registrar_ingreso(self.p2, self.casa, 50, self.admin)
+        self.client.login(username="admin", password="x")
+
+    def test_detalle_de_cotizacion_es_tabla_numerada(self):
+        cot = servicios.crear_cotizacion(self.ana, [self.item(self.p1, None, 1), self.item(self.p2, None, 2)])
+        r = self.client.get(reverse("panel:cotizacion_detalle", args=[cot.pk]))
+        self.assertContains(r, '<table class="p-tabla">')
+        self.assertContains(r, '<td class="n">1</td>')
+        self.assertContains(r, '<td class="n">2</td>')
+        self.assertContains(r, "Pop it")
+        self.assertContains(r, "Cubo")
+
+    def test_detalle_de_venta_es_tabla_numerada(self):
+        v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 1), self.item(self.p2, self.casa, 3)])
+        r = self.client.get(reverse("panel:venta_detalle", args=[v.pk]))
+        self.assertContains(r, '<table class="p-tabla">')
+        self.assertContains(r, '<td class="n">1</td>')
+        self.assertContains(r, '<td class="n">2</td>')
+        self.assertContains(r, "Casa")

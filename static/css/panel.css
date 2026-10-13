@@ -87,6 +87,22 @@ body.panel { background: var(--bg); }
 .p-codigos { font-size: .72rem; font-weight: 700; letter-spacing: .03em; color: var(--teal-dark); }
 .p-tag-cod { background: #E3F4F1; color: var(--teal-dark); font-weight: 800; letter-spacing: .03em; }
 
+/* Tabla de productos en el detalle de ventas y cotizaciones (numerada) */
+.p-tabla-wrap { overflow-x: auto; margin: 0 0 .6rem; }
+.p-tabla { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.p-tabla th { background: var(--teal); color: #fff; text-align: left; font-size: .75rem; font-weight: 700; padding: .45rem .55rem; white-space: nowrap; }
+.p-tabla th:first-child { border-radius: .4rem 0 0 .4rem; }
+.p-tabla th:last-child { border-radius: 0 .4rem .4rem 0; }
+.p-tabla td { padding: .45rem .55rem; border-bottom: 1px solid #f0ece2; vertical-align: middle; }
+.p-tabla tbody tr:nth-child(even) { background: #faf7f1; }
+.p-tabla th.n, .p-tabla td.n { width: 2rem; text-align: center; font-weight: 700; }
+.p-tabla td.n { color: var(--ink-soft); }
+.p-tabla .c, .p-tabla th.c { text-align: center; white-space: nowrap; }
+.p-tabla .d, .p-tabla th.d { text-align: right; white-space: nowrap; }
+.p-tabla .prod { min-width: 11rem; font-weight: 600; }
+.p-tabla .prod .p-tag { margin-left: .3rem; }
+.p-tabla small { display: block; font-weight: 400; }
+.p-tabla tr.anulada-fila td { opacity: .6; }
 .p-linea { display: flex; flex-wrap: wrap; gap: .2rem .9rem; padding: .35rem 0; border-bottom: 1px solid #f0ece2; align-items: baseline; font-size: .9rem; }
 .p-linea:last-child { border-bottom: 0; }
 .pos { color: #1f8a4c; } .neg { color: #c0392b; }

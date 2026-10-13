@@ -8,16 +8,26 @@
 <p><a class="p-btn p-btn-sec" href="{% url 'panel:venta_recibo' venta.pk %}" target="_blank" rel="noopener">Abrir recibo de respaldo (PDF)</a></p>
 
 <div class="p-card">
-  {% for it in items %}
-  <div class="p-linea">
-    <b>{{ it.cantidad }} × {% if it.producto.codigo %}<span class="p-tag p-tag-cod">{{ it.producto.codigo }}</span> {% endif %}{{ it.producto.nombre }}</b>
-    <span>Bs. {{ it.precio_unitario|floatformat:0 }} c/u {% if it.precio_unitario != it.precio_lista %}<small class="p-soft">(lista: {{ it.precio_lista|floatformat:0 }})</small>{% endif %}</span>
-    <span class="p-soft">{% if it.ubicacion %}salió de {{ it.ubicacion }}{% else %}sin descontar de ningún lugar{% endif %}</span>
-    {% if it.faltante %}<span class="p-tag warn">sin stock: {{ it.faltante }}</span>{% endif %}
-    <b>Bs. {{ it.subtotal|floatformat:0 }}</b>
-    {% if it.bajo_costo %}<span class="p-tag warn">bajo el costo</span>{% endif %}
+  <div class="p-tabla-wrap">
+    <table class="p-tabla">
+      <thead><tr><th class="n">N°</th><th>Cód.</th><th>Producto</th><th class="c">Cant.</th><th class="d">P. unitario</th><th>Salió de</th><th class="d">Subtotal</th></tr></thead>
+      <tbody>
+      {% for it in items %}
+        <tr>
+          <td class="n">{{ forloop.counter }}</td>
+          <td>{% if it.producto.codigo %}<span class="p-tag p-tag-cod">{{ it.producto.codigo }}</span>{% else %}—{% endif %}</td>
+          <td class="prod">{{ it.producto.nombre }}
+            {% if it.faltante %}<span class="p-tag warn">sin stock: {{ it.faltante }}</span>{% endif %}
+            {% if it.bajo_costo %}<span class="p-tag warn">bajo el costo</span>{% endif %}</td>
+          <td class="c">{{ it.cantidad }}</td>
+          <td class="d">Bs. {{ it.precio_unitario|floatformat:0 }}{% if it.precio_unitario != it.precio_lista %}<small class="p-soft">(lista: {{ it.precio_lista|floatformat:0 }})</small>{% endif %}</td>
+          <td class="p-soft">{% if it.ubicacion %}{{ it.ubicacion }}{% else %}sin descontar{% endif %}</td>
+          <td class="d"><b>Bs. {{ it.subtotal|floatformat:0 }}</b></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
-  {% endfor %}
   <div class="p-resumen">
     <div class="fila"><span>Subtotal</span><b>Bs. {{ venta.subtotal|floatformat:0 }}</b></div>
     {% for linea in venta.detalle_reglas.splitlines %}<div class="fila desc"><span>🏷 {{ linea }}</span></div>{% endfor %}

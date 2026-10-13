@@ -8,9 +8,23 @@
 <p><a class="p-btn p-btn-grande" href="{% url 'panel:cotizacion_pdf' cot.pk %}" target="_blank" rel="noopener">Abrir cotización (PDF)</a></p>
 
 <div class="p-card">
-  {% for it in items %}
-  <div class="p-linea"><b>{{ it.cantidad }} × {% if it.producto.codigo %}<span class="p-tag p-tag-cod">{{ it.producto.codigo }}</span> {% endif %}{{ it.producto.nombre }}</b><span>Bs. {{ it.precio_unitario|floatformat:0 }} c/u</span><b>Bs. {{ it.subtotal|floatformat:0 }}</b></div>
-  {% endfor %}
+  <div class="p-tabla-wrap">
+    <table class="p-tabla">
+      <thead><tr><th class="n">N°</th><th>Cód.</th><th>Producto</th><th class="c">Cant.</th><th class="d">P. unitario</th><th class="d">Subtotal</th></tr></thead>
+      <tbody>
+      {% for it in items %}
+        <tr>
+          <td class="n">{{ forloop.counter }}</td>
+          <td>{% if it.producto.codigo %}<span class="p-tag p-tag-cod">{{ it.producto.codigo }}</span>{% else %}—{% endif %}</td>
+          <td class="prod">{{ it.producto.nombre }}</td>
+          <td class="c">{{ it.cantidad }}</td>
+          <td class="d">Bs. {{ it.precio_unitario|floatformat:0 }}</td>
+          <td class="d"><b>Bs. {{ it.subtotal|floatformat:0 }}</b></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   <div class="p-resumen">
     <div class="fila"><span>Subtotal</span><b>Bs. {{ cot.subtotal|floatformat:0 }}</b></div>
     {% for linea in cot.detalle_reglas.splitlines %}<div class="fila desc"><span>🏷 {{ linea }}</span></div>{% endfor %}
