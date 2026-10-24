@@ -46,7 +46,13 @@
   const KEY_ORDEN = "panel-orden";
   const cmp = (a, b) => (a || "").localeCompare(b || "", "es", { numeric: true, sensitivity: "base" });
   const num = (t, k) => parseInt(t.dataset[k], 10) || 0;
+  // Posición de cada categoría = su lugar en los botones de categoría (el mismo orden que el admin define)
+  const posCat = {};
+  barra.querySelectorAll("[data-f-cat]").forEach((b, i) => { if (b.dataset.fCat) posCat[b.dataset.fCat] = i; });
+  const lugarCat = (t) => (t.dataset.categoria in posCat ? posCat[t.dataset.categoria] : 9999); // sin categoría, al final
   const ORDENES = {
+    // Agrupa por categoría y dentro de cada una ordena por nombre
+    categoria: (a, b) => lugarCat(a) - lugarCat(b) || cmp(a.dataset.nombre, b.dataset.nombre),
     nombre: (a, b) => cmp(a.dataset.nombre, b.dataset.nombre),
     nombre_desc: (a, b) => cmp(b.dataset.nombre, a.dataset.nombre),
     // Sin código al final; con código, "natural" (J2 antes que J10)

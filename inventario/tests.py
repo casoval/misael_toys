@@ -1151,3 +1151,4 @@ class CatalogoPdfTests(Base):
             self.assertContains(r, self.url)
             for clave, _ in catalogo_pdf.opciones():
                 self.assertContains(r, f'value="{clave}"')
+            self.assertContains(r, 'value="categoria"')  # ordenar agrupando por categoría

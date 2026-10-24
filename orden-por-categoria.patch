@@ -1,0 +1,44 @@
+--- a/templates/panel/_filtros.html
++++ b/templates/panel/_filtros.html
+@@ -53,6 +53,7 @@
+       <select data-f-orden aria-label="Ordenar productos por">
+         <option value="nombre">Nombre (A-Z)</option>
+         <option value="nombre_desc">Nombre (Z-A)</option>
++        <option value="categoria">Categoría (agrupados)</option>
+         <option value="codigo">Código</option>
+         <option value="precio_asc">Precio: menor a mayor</option>
+         <option value="precio_desc">Precio: mayor a menor</option>
+--- a/static/js/panel_vista.js
++++ b/static/js/panel_vista.js
+@@ -46,7 +46,13 @@
+   const KEY_ORDEN = "panel-orden";
+   const cmp = (a, b) => (a || "").localeCompare(b || "", "es", { numeric: true, sensitivity: "base" });
+   const num = (t, k) => parseInt(t.dataset[k], 10) || 0;
++  // Posición de cada categoría = su lugar en los botones de categoría (el mismo orden que el admin define)
++  const posCat = {};
++  barra.querySelectorAll("[data-f-cat]").forEach((b, i) => { if (b.dataset.fCat) posCat[b.dataset.fCat] = i; });
++  const lugarCat = (t) => (t.dataset.categoria in posCat ? posCat[t.dataset.categoria] : 9999); // sin categoría, al final
+   const ORDENES = {
++    // Agrupa por categoría y dentro de cada una ordena por nombre
++    categoria: (a, b) => lugarCat(a) - lugarCat(b) || cmp(a.dataset.nombre, b.dataset.nombre),
+     nombre: (a, b) => cmp(a.dataset.nombre, b.dataset.nombre),
+     nombre_desc: (a, b) => cmp(b.dataset.nombre, a.dataset.nombre),
+     // Sin código al final; con código, "natural" (J2 antes que J10)
+--- a/inventario/tests.py
++++ b/inventario/tests.py
+@@ -1151,3 +1151,4 @@
+             self.assertContains(r, self.url)
+             for clave, _ in catalogo_pdf.opciones():
+                 self.assertContains(r, f'value="{clave}"')
++            self.assertContains(r, 'value="categoria"')  # ordenar agrupando por categoría
+--- a/README.md
++++ b/README.md
+@@ -85,7 +85,7 @@
+     Cotizar, en las listas de Ventas y Cotizaciones (también por nombre, cliente o N°) y en el admin.
+ - **Orden y búsqueda**:
+   - Productos (Stock, Vender y Cotizar): por defecto A-Z por nombre, con selector «Ordenar» para
+-    cambiar a nombre Z-A, código, precio, stock o más recientes (se recuerda la última elección).
++    cambiar a nombre Z-A, categoría (agrupados, en el orden de las categorías), código, precio, stock o más recientes (se recuerda la última elección).
+   - Listas de Ventas y Cotizaciones: más recientes por defecto; también por más antiguos, N°, monto,
+     cliente o vendedor/creador. Se busca por código, producto, cliente, vendedor/creador, observaciones
+     o N°, y se filtra por rango de fechas (Desde/Hasta) y por usuario (admin).
