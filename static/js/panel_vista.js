@@ -110,6 +110,58 @@
     el("[data-f-resumen]").textContent =
       visibles + " de " + tarjetas.length + " producto" + (tarjetas.length === 1 ? "" : "s") +
       (conUnidades ? " · " + unidades + " unidades" : "");
+    actualizarInfoCatalogo(visibles);
+  }
+
+  // ---------- Catálogo imprimible (PDF carta) ----------
+  // Abre en otra pestaña un PDF con los productos que se ven ahora (mismos filtros y mismo orden).
+  const imp = el("[data-imprimir]");
+  const selDiseno = imp && imp.querySelector("[data-i-diseno]");
+  const KEY_DISENO = "panel-catalogo-diseno";
+
+  function actualizarInfoCatalogo(n) {
+    if (!imp) return;
+    const info = imp.querySelector("[data-i-info]");
+    const porHoja = parseInt(selDiseno.value, 10) || 9;
+    const hojas = Math.ceil(n / porHoja);
+    info.textContent = n ? n + " → " + hojas + " hoja" + (hojas === 1 ? "" : "s") : "sin productos";
+  }
+
+  // Resumen de los filtros activos para el encabezado del PDF (sin stock ni lugares: es para el cliente)
+  function textoFiltros() {
+    const partes = [];
+    const cat = barra.querySelector("[data-f-cat].on");
+    if (cat && cat.dataset.fCat) partes.push("Categoría: " + cat.textContent.trim());
+    barra.querySelectorAll("[data-f-grupo]").forEach((g) => {
+      const on = [...g.querySelectorAll("[data-f-valor].on")].map((b) => b.textContent.trim());
+      const nombre = g.querySelector("legend");
+      if (on.length && nombre) partes.push(nombre.textContent.trim() + ": " + on.join(" / "));
+    });
+    const pmin = numero(entradaMin), pmax = numero(entradaMax);
+    if (pmin !== null && pmax !== null) partes.push("Precio: Bs. " + pmin + " a " + pmax);
+    else if (pmin !== null) partes.push("Precio: desde Bs. " + pmin);
+    else if (pmax !== null) partes.push("Precio: hasta Bs. " + pmax);
+    if (entradaQ.value.trim()) partes.push("Búsqueda: \u201c" + entradaQ.value.trim() + "\u201d");
+    return partes.join("  ·  ");
+  }
+
+  if (imp) {
+    try { const g = localStorage.getItem(KEY_DISENO); if (g && [...selDiseno.options].some((o) => o.value === g)) selDiseno.value = g; } catch (e) {}
+    selDiseno.addEventListener("change", () => {
+      try { localStorage.setItem(KEY_DISENO, selDiseno.value); } catch (e) {}
+      aplicarFiltros();
+    });
+    imp.querySelector("[data-i-btn]").addEventListener("click", () => {
+      const ids = [...document.querySelectorAll("[data-vista-contenedor] .p-prod:not([hidden])")].map((t) => t.dataset.id);
+      if (!ids.length) { alert("No hay productos para imprimir con estos filtros."); return; }
+      const f = document.createElement("form");
+      f.method = "post"; f.action = imp.dataset.url; f.target = "_blank"; f.hidden = true;
+      [["csrfmiddlewaretoken", imp.dataset.csrf], ["ids", ids.join(",")], ["diseno", selDiseno.value], ["filtros", textoFiltros()]]
+        .forEach(([n, v]) => { const i = document.createElement("input"); i.type = "hidden"; i.name = n; i.value = v; f.appendChild(i); });
+      document.body.appendChild(f);
+      f.submit();
+      setTimeout(() => f.remove(), 0);
+    });
   }
 
   barra.querySelectorAll("[data-f-cat]").forEach((b) => b.addEventListener("click", () => {

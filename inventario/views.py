@@ -18,6 +18,7 @@ from django.views.decorators.http import require_POST
 from catalogo.models import Atributo, Categoria, Producto, ValorAtributo
 
 from . import servicios
+from . import catalogo_pdf
 from .fotos import foto_panel
 from .lineas import leer_decimal, leer_lineas
 from .models import Cotizacion, CotizacionItem, MovimientoStock, Stock, Ubicacion, Venta, VentaItem
@@ -95,6 +96,7 @@ def _filtros_panel():
                 "valores", queryset=ValorAtributo.objects.filter(productos__isnull=False).distinct().order_by("valor")))
         ),
         "f_ubicaciones": list(Ubicacion.objects.filter(activa=True)),
+        "f_disenos": catalogo_pdf.opciones(),  # diseños del catálogo imprimible (4 a 18 por hoja)
     }
 
 
@@ -447,6 +449,40 @@ def cotizacion_pdf(request, pk):
     cot = get_object_or_404(_cotizaciones_visibles(request), pk=pk)
     respuesta = HttpResponse(generar_pdf_cotizacion(cot), content_type="application/pdf")
     respuesta["Content-Disposition"] = f'inline; filename="cotizacion-{cot.numero}.pdf"'
+    return respuesta
+
+
+# --------------------------------------------------------------------------
+# Catálogo imprimible (PDF carta) con los productos y el orden que se están viendo
+# --------------------------------------------------------------------------
+@login_required
+@require_POST
+def catalogo_pdf_vista(request):
+    """Recibe los ids de los productos visibles (ya filtrados y ordenados en el navegador) y el diseño
+    elegido, y abre el PDF en otra pestaña. No incluye stock. Los productos ocultos del sitio público
+    (disponible = No) no se imprimen."""
+    ids = []
+    for trozo in request.POST.get("ids", "").split(","):
+        trozo = trozo.strip()
+        if trozo.isdigit() and int(trozo) not in ids:
+            ids.append(int(trozo))
+    ids = ids[:catalogo_pdf.MAX_PRODUCTOS]
+    diseno = request.POST.get("diseno", "")
+    if diseno not in catalogo_pdf.DISENOS:
+        diseno = catalogo_pdf.DISENO_POR_DEFECTO
+    productos = {
+        p.pk: p for p in Producto.objects.filter(pk__in=ids, disponible=True)
+        .select_related("categoria").prefetch_related("imagenes")
+    }
+    lista = [productos[i] for i in ids if i in productos]
+    if not lista:
+        return HttpResponse(
+            "<!doctype html><meta charset='utf-8'><title>Catálogo</title>"
+            "<p style='font-family:sans-serif;padding:2rem'>No hay productos para imprimir con esos filtros. "
+            "Cierra esta pestaña y cambia los filtros.</p>", status=400)
+    pdf = catalogo_pdf.generar_pdf_catalogo(lista, diseno, request.POST.get("filtros", "").strip()[:300])
+    respuesta = HttpResponse(pdf, content_type="application/pdf")
+    respuesta["Content-Disposition"] = 'inline; filename="catalogo-misael-toys.pdf"'
     return respuesta
 
 

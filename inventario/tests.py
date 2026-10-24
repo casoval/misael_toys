@@ -1,14 +1,19 @@
+import re
+import shutil
+import tempfile
 from datetime import timedelta
 from decimal import Decimal
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from catalogo.models import Atributo, Categoria, Producto, ValorAtributo
+from catalogo.models import Atributo, Categoria, ImagenProducto, Producto, ValorAtributo
 
-from . import servicios
+from . import catalogo_pdf, servicios
 from .models import Cotizacion, MovimientoStock, ReglaDescuento, Stock, Ubicacion, Venta
 from .servicios import ErrorNegocio
 
@@ -1053,3 +1058,96 @@ class DetalleEnTablaNumeradaTests(Base):
         self.assertContains(r, '<td class="n">1</td>')
         self.assertContains(r, '<td class="n">2</td>')
         self.assertContains(r, "Casa")
+
+
+def _paginas(pdf):
+    return len(re.findall(rb"/Type /Page(?![s\w])", pdf))
+
+
+class CatalogoPdfTests(Base):
+    """Catálogo imprimible (hoja carta) con los productos visibles en el panel."""
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse("panel:catalogo_pdf")
+        self.client.login(username="ana", password="x")  # un vendedor también puede imprimirlo
+
+    def ids(self, *productos):
+        return ",".join(str(p.pk) for p in productos)
+
+    def test_exige_login_y_post(self):
+        self.client.logout()
+        self.assertEqual(self.client.post(self.url, {"ids": self.ids(self.p1)}).status_code, 302)
+        self.client.login(username="ana", password="x")
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+
+    def test_devuelve_un_pdf_carta_en_linea(self):
+        r = self.client.post(self.url, {"ids": self.ids(self.p1, self.p2), "diseno": "9", "filtros": "Categoría: Táctil"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+        self.assertTrue(r["Content-Disposition"].startswith("inline"))
+        self.assertTrue(r.content.startswith(b"%PDF"))
+        self.assertIn(b"/MediaBox [ 0 0 612 792 ]", r.content)  # carta
+
+    def test_cantidad_de_hojas_segun_el_diseno(self):
+        extra = [Producto.objects.create(nombre=f"P{i}", precio=D("5")) for i in range(25)]
+        todos = self.ids(self.p1, self.p2, *extra)  # 27 productos
+        for clave, d in catalogo_pdf.DISENOS.items():
+            r = self.client.post(self.url, {"ids": todos, "diseno": clave})
+            esperado = -(-27 // d.por_hoja)
+            self.assertEqual(_paginas(r.content), esperado, f"diseño {clave}")
+            self.assertEqual(d.por_hoja, int(clave))
+
+    def test_diseno_invalido_usa_el_estandar(self):
+        r = self.client.post(self.url, {"ids": self.ids(self.p1), "diseno": "999"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+
+    def test_sin_productos_o_ocultos_no_genera_pdf(self):
+        oculto = Producto.objects.create(nombre="Oculto", precio=D("5"), disponible=False)
+        for ids in ("", "abc,,-3", self.ids(oculto), "99999"):
+            r = self.client.post(self.url, {"ids": ids})
+            self.assertEqual(r.status_code, 400, ids)
+            self.assertNotEqual(r["Content-Type"], "application/pdf")
+
+    def test_oculto_se_ignora_pero_el_resto_se_imprime(self):
+        oculto = Producto.objects.create(nombre="Oculto", precio=D("5"), disponible=False)
+        r = self.client.post(self.url, {"ids": self.ids(oculto, self.p1)})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+
+    def test_nombres_largos_y_caracteres_raros_no_rompen(self):
+        raro = Producto.objects.create(
+            nombre="Súper juguete " * 12 + "→ ★", precio=D("12.5"), categoria=self.cat,
+            descripcion_corta="Descripción con ñ, tildes y símbolos ✓ ☺ " * 5, recomendado_por_terapeutas=True,
+            largo_cm=D("10"), ancho_cm=D("5.5"), alto_cm=D("3"),
+        )
+        for clave in catalogo_pdf.DISENOS:
+            r = self.client.post(self.url, {"ids": self.ids(raro), "diseno": clave})
+            self.assertEqual(r.status_code, 200, clave)
+
+    def test_foto_local_se_incrusta(self):
+        from PIL import Image
+        carpeta = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, carpeta, True)
+        buf = BytesIO()
+        Image.new("RGB", (600, 400), "orange").save(buf, "PNG")
+        with self.settings(MEDIA_ROOT=carpeta):
+            ImagenProducto.objects.create(producto=self.p1, imagen=ContentFile(buf.getvalue(), name="f.png"))
+            con = self.client.post(self.url, {"ids": self.ids(self.p1), "diseno": "9"}).content
+            sin = self.client.post(self.url, {"ids": self.ids(self.p2), "diseno": "9"}).content
+        # El logo es una imagen en ambos PDFs; la foto del producto es una más solo en el primero
+        self.assertEqual(con.count(b"/Subtype /Image"), sin.count(b"/Subtype /Image") + 1)
+
+    def test_no_incluye_stock(self):
+        servicios.registrar_ingreso(self.p1, self.casa, 7, self.admin)
+        pdf = catalogo_pdf.generar_pdf_catalogo([self.p1], "6")
+        self.assertNotIn(b"Casa", pdf)
+
+    def test_botones_y_opciones_en_stock_vender_y_cotizar(self):
+        for nombre in ("panel:stock", "panel:venta_nueva", "panel:cotizacion_nueva"):
+            r = self.client.get(reverse(nombre))
+            self.assertContains(r, "data-imprimir")
+            self.assertContains(r, self.url)
+            for clave, _ in catalogo_pdf.opciones():
+                self.assertContains(r, f'value="{clave}"')

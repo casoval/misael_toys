@@ -96,6 +96,16 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   categorías y atributos como Material, Edad o Color (los que tengan «mostrar como filtro»)— más
   precio, «hay en [lugar]» y «solo con stock». Se aplican al instante, sin recargar. Dentro de un
   mismo atributo se suman las opciones; entre atributos distintos se exige cumplir todos.
+- **Catálogo imprimible (PDF carta)**: en Stock, Vender y Cotizar, junto a los filtros, hay un selector de
+  diseño y el botón «🖨 Catálogo PDF». Abre **en otra pestaña** un PDF en hoja carta con **los productos que estás
+  viendo en ese momento** (respeta los filtros, la búsqueda y el orden elegidos). Cada producto lleva foto, nombre,
+  precio, descripción corta, código, categoría, medidas y el sello «Recomendado», igual que la tarjeta del
+  catálogo público. Nunca muestra stock ni lugares. El encabezado resume los filtros usados y el pie lleva el
+  contacto y «Página X de Y». Diseños (se recuerda el último): **4 por hoja** (grande, 2×2), **6** (mediano, 3×2),
+  **9** (estándar, 3×3), **12** (compacto, 4×3), **16** (mini, 4×4) y **18** (lista con foto, 2 columnas × 9).
+  Junto al botón se ve cuántas hojas saldrán. Los productos ocultos del sitio público («disponible» desactivado) no
+  se imprimen, y el tope es de 400 productos por catálogo. El código está en `inventario/catalogo_pdf.py` (los
+  diseños se ajustan en `DISENOS`).
 - **Recibo de respaldo**: cada venta tiene un botón «Recibo de respaldo (PDF)»
   (una sola hoja, con firmas, marca «ANULADA» si se anuló). No muestra stock ni lugares.
 - **Sin decimales**: todo el dinero del panel y de los PDFs se calcula y se muestra

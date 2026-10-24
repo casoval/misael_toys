@@ -63,6 +63,13 @@
     </label>
 
     <p class="p-fresumen"><span data-f-resumen></span><button type="button" class="p-flimpiar" data-f-limpiar hidden>Limpiar filtros</button></p>
+    <div class="p-imprimir" data-imprimir data-url="{% url 'panel:catalogo_pdf' %}" data-csrf="{{ csrf_token }}">
+      <select data-i-diseno aria-label="Diseño del catálogo imprimible (hoja carta)" title="Cuántos productos por hoja carta">
+        {% for clave, texto in f_disenos %}<option value="{{ clave }}" data-por="{{ clave }}"{% if clave == "9" %} selected{% endif %}>{{ texto }}</option>{% endfor %}
+      </select>
+      <button type="button" class="p-btn p-btn-sec" data-i-btn title="Abre en otra pestaña un PDF en hoja carta con los productos que ves ahora (respeta filtros y orden)">🖨 Catálogo PDF</button>
+      <small class="p-i-info" data-i-info></small>
+    </div>
     {% include "panel/_toggle_vista.html" %}
   </div>
 </div>

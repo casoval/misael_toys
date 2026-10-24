@@ -16,6 +16,7 @@ urlpatterns = [
     path("producto/<int:pk>/ajuste/", views.stock_ajuste, name="stock_ajuste"),
 
     path("calcular/", views.calcular, name="calcular"),
+    path("catalogo/pdf/", views.catalogo_pdf_vista, name="catalogo_pdf"),
 
     path("vender/", views.venta_nueva, name="venta_nueva"),
     path("ventas/", views.ventas_lista, name="ventas"),

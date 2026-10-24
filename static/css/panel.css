@@ -224,6 +224,11 @@ body.panel { background: var(--bg); }
 .p-flimpiar { background: none; border: 0; color: #c0392b; font: inherit; font-size: .82rem; text-decoration: underline; cursor: pointer; padding: 0 0 0 .5rem; }
 .p-flimpiar[hidden] { display: none; }
 .p-frow2 .p-toggle { margin-left: auto; }
+.p-imprimir { margin-left: auto; display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.p-imprimir + .p-toggle { margin-left: 0; }
+.p-imprimir select { width: auto; margin: 0; padding: .25rem .4rem; font-size: .82rem; max-width: 17rem; }
+.p-imprimir .p-btn { margin: 0; padding: .28rem .75rem; font-size: .82rem; white-space: nowrap; }
+.p-i-info { color: var(--ink-soft); font-size: .78rem; white-space: nowrap; }
 
 /* ---------- Venta / cotización: en pantallas grandes, productos a la izquierda y detalle a la derecha ---------- */
 .p-venta { display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem; align-items: start; padding-bottom: 4.6rem; }
