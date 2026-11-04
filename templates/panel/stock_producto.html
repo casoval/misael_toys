@@ -6,10 +6,16 @@
 <p class="p-soft">Precio de lista: <b>Bs. {{ producto.precio|floatformat:0 }}</b>{% if producto.categoria %} · {{ producto.categoria }}{% endif %}</p>
 
 <div class="p-card">
-  <h2>Dónde está ({{ total }} en total)</h2>
+  <h2>{% if hay_otras %}En tus ubicaciones ({{ total }}){% else %}Dónde está ({{ total }} en total){% endif %}</h2>
   <div class="p-chips grande">
-    {% for l in lugares %}<span class="p-chip {% if l.cantidad == 0 %}cero{% elif l.cantidad < 0 %}neg{% endif %}">{{ l.ubicacion.nombre }}: <b>{{ l.cantidad }}</b></span>{% endfor %}
+    {% for l in lugares %}{% if l.propia %}<span class="p-chip {% if l.cantidad == 0 %}cero{% elif l.cantidad < 0 %}neg{% endif %}">{{ l.ubicacion.nombre }}: <b>{{ l.cantidad }}</b></span>{% endif %}{% endfor %}
   </div>
+  {% if hay_otras %}
+  <h3 class="p-sub">En otras ubicaciones <small class="p-soft">(solo referencia, {{ total_otras }} en total)</small></h3>
+  <div class="p-chips grande">
+    {% for l in lugares %}{% if not l.propia %}<span class="p-chip otra {% if l.cantidad == 0 %}cero{% elif l.cantidad < 0 %}neg{% endif %}">{{ l.ubicacion.nombre }}: <b>{{ l.cantidad }}</b></span>{% endif %}{% endfor %}
+  </div>
+  {% endif %}
   {% if por_cubrir %}<p class="p-soft" style="color:#b36b00;margin-top:.6rem">⚠ Se vendieron {{ por_cubrir }} unidad{{ por_cubrir|pluralize:"es" }} sin stock registrado (en rojo). Al «Agregar stock» en ese lugar se compensan solas; si el producto ya existía físicamente, usa «Corregir cantidad».</p>{% endif %}
 </div>
 

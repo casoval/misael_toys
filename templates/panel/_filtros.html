@@ -44,7 +44,16 @@
             <option value="">En cualquier lugar</option>
             {% for u in f_ubicaciones %}<option value="{{ u.pk }}">Hay en {{ u.nombre }}</option>{% endfor %}
           </select>
-          <label class="p-check"><input type="checkbox" data-f-constock> Solo con stock</label>
+          <select data-f-estado aria-label="Estado del stock">
+            <option value="">Cualquier estado de stock</option>
+            <option value="con">Con stock{% if hay_otras %} en mis ubicaciones{% endif %}</option>
+            <option value="bajo">Stock bajo (queda 1 unidad)</option>
+            <option value="agotado">Agotados{% if hay_otras %} en mis ubicaciones{% endif %}</option>
+            {% if hay_otras %}<option value="solo_otras">Sin stock aquí, pero hay en otra ubicación</option>{% endif %}
+            <option value="nada">Agotados en todas las ubicaciones</option>
+            <option value="neg">Vendidos sin stock (por cubrir)</option>
+          </select>
+          <label class="p-check"><input type="checkbox" data-f-constock> Solo con stock en {% if hay_otras %}mis ubicaciones{% else %}algún lugar{% endif %}</label>
         </fieldset>
       </div>
     </details>
@@ -71,6 +80,6 @@
       <button type="button" class="p-btn p-btn-sec" data-i-btn title="Abre en otra pestaña un PDF en hoja carta con los productos que ves ahora (respeta filtros y orden)">🖨 Catálogo PDF</button>
       <small class="p-i-info" data-i-info></small>
     </div>
-    {% include "panel/_toggle_vista.html" %}
+    {% include "panel/_toggle_vista.html" with tabla=tabla %}
   </div>
 </div>

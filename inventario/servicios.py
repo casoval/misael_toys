@@ -3,7 +3,7 @@
 Las vistas solo validan lo que llega del formulario y llaman a estas
 funciones; así las reglas viven en un único lugar (y se pueden testear).
 """
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -28,12 +28,20 @@ def _q(valor):
 # Descuentos
 # --------------------------------------------------------------------------
 def calcular_totales(lineas, aplicar_reglas=True, descuento_extra=0, hoy=None):
-    """Calcula subtotal, reglas aplicables y total.
+    """Calcula subtotal, reglas aplicables y total, aplicando los descuentos PRODUCTO POR PRODUCTO.
 
     `lineas`: iterable de objetos/dicts con producto, cantidad, precio_unitario.
-    Devuelve un dict con:
-      subtotal, unidades, aplicadas (lista), descuento_reglas, descuento_extra,
-      total, sugerencia (texto para animar a llegar a la siguiente regla).
+
+    Cada línea (cantidad × precio) recibe su propio descuento ya redondeado a entero; el total es
+    la suma de las líneas. Así no hay decimales sueltos y el neto de cada producto (y por lo tanto
+    el de cada ubicación) suma exactamente el total de la venta.
+      · Reglas por %: se aplican a cada línea que entra en su alcance (todo el pedido, una categoría
+        o un producto). El % se calcula sobre el valor de ESA línea y se redondea (0,5 sube).
+      · Descuento adicional (Bs.): se reparte entre las líneas en proporción a lo que valen ya con
+        sus promociones (método del mayor resto: suma exactamente lo pedido).
+    Devuelve un dict con: subtotal, unidades, aplicadas (lista), descuento_reglas, descuento_extra,
+    total, sugerencia (texto para animar a llegar a la siguiente regla) y `lineas`: una entrada por
+    cada línea recibida, en el mismo orden, con bruto, descuento_reglas, descuento_extra, descuento y neto.
     """
     items = []
     for l in lineas:
@@ -41,7 +49,9 @@ def calcular_totales(lineas, aplicar_reglas=True, descuento_extra=0, hoy=None):
         items.append((g("producto"), int(g("cantidad")), _q(g("precio_unitario"))))
 
     unidades = sum(c for _, c, _ in items)
-    subtotal = _q(sum((c * p for _, c, p in items), Decimal("0")))
+    brutos = [c * p for _, c, p in items]
+    subtotal = _q(sum(brutos, Decimal("0")))
+    desc_reglas_linea = [Decimal("0")] * len(items)
 
     aplicadas = []
     sugerencia = ""
@@ -52,28 +62,38 @@ def calcular_totales(lineas, aplicar_reglas=True, descuento_extra=0, hoy=None):
             if r.vigente(hoy)
         ]
 
-        def alcance(regla):
+        def lineas_en_alcance(regla):
             if regla.alcance == ReglaDescuento.CATEGORIA:
-                sel = [(c, p) for prod, c, p in items if prod.categoria_id == regla.categoria_id]
-            elif regla.alcance == ReglaDescuento.PRODUCTO:
-                sel = [(c, p) for prod, c, p in items if prod.pk == regla.producto_id]
-            else:
-                sel = [(c, p) for _, c, p in items]
-            return sum(c for c, _ in sel), sum((c * p for c, p in sel), Decimal("0"))
+                return [i for i, (prod, _, _) in enumerate(items) if prod.categoria_id == regla.categoria_id]
+            if regla.alcance == ReglaDescuento.PRODUCTO:
+                return [i for i, (prod, _, _) in enumerate(items) if prod.pk == regla.producto_id]
+            return list(range(len(items)))
 
         candidatas = []
         for r in reglas:
-            u, base = alcance(r)
+            idx = lineas_en_alcance(r)
+            u = sum(items[i][1] for i in idx)
             if u and u >= r.minimo_unidades:
+                por_linea = {i: _q(brutos[i] * r.porcentaje / 100) for i in idx}  # cada producto, redondeado
                 candidatas.append({
                     "regla": r, "nombre": r.nombre, "porcentaje": r.porcentaje,
-                    "unidades": u, "base": _q(base),
-                    "monto": _q(base * r.porcentaje / 100), "acumulable": r.acumulable,
+                    "unidades": u, "base": _q(sum((brutos[i] for i in idx), Decimal("0"))),
+                    "monto": sum(por_linea.values(), Decimal("0")), "por_linea": por_linea,
+                    "acumulable": r.acumulable,
                 })
         aplicadas = [c for c in candidatas if c["acumulable"]]
         no_acum = [c for c in candidatas if not c["acumulable"]]
         if no_acum:
             aplicadas.append(max(no_acum, key=lambda c: c["monto"]))
+
+        # Se aplican línea por línea; nunca se descuenta más de lo que vale el producto.
+        for a in aplicadas:
+            real = Decimal("0")
+            for i, monto in a["por_linea"].items():
+                monto = min(monto, brutos[i] - desc_reglas_linea[i])
+                desc_reglas_linea[i] += monto
+                real += monto
+            a["monto"] = real
 
         # Sugerencia: la regla "de todo el pedido" más cercana que aún no se alcanza.
         faltan = [
@@ -86,17 +106,23 @@ def calcular_totales(lineas, aplicar_reglas=True, descuento_extra=0, hoy=None):
             f, r = min(faltan, key=lambda x: x[0])
             sugerencia = f"Con {f} unidad{'es' if f != 1 else ''} más se aplica {r.porcentaje.normalize():f}% de descuento ({r.nombre})."
 
-    descuento_reglas = min(_q(sum((a["monto"] for a in aplicadas), Decimal("0"))), subtotal)
+    descuento_reglas = sum(desc_reglas_linea, Decimal("0"))
     extra = max(_q(descuento_extra or 0), Decimal("0"))
     extra = min(extra, subtotal - descuento_reglas)
+    extra_linea = repartir_total([b - d for b, d in zip(brutos, desc_reglas_linea)], extra)
+    detalle = [
+        {"bruto": b, "descuento_reglas": dr, "descuento_extra": de, "descuento": dr + de, "neto": b - dr - de}
+        for b, dr, de in zip(brutos, desc_reglas_linea, extra_linea)
+    ]
     return {
         "subtotal": subtotal,
         "unidades": unidades,
         "aplicadas": aplicadas,
         "descuento_reglas": descuento_reglas,
         "descuento_extra": extra,
-        "total": _q(subtotal - descuento_reglas - extra),
+        "total": subtotal - descuento_reglas - extra,
         "sugerencia": sugerencia,
+        "lineas": detalle,
     }
 
 
@@ -170,6 +196,49 @@ def ajustar(producto, ubicacion, nueva_cantidad, usuario, nota=""):
                            f"Ajuste de {actual} a {nueva_cantidad}. {nota}".strip())
 
 
+def repartir_total(pesos, total):
+    """Reparte `total` (entero, lo realmente cobrado) entre ítems en proporción a `pesos`
+    (cantidad × precio de cada ítem). Devuelve enteros que SUMAN EXACTAMENTE `total`
+    (método del mayor resto), para que el monto por ubicación cuadre con el total vendido."""
+    pesos = [Decimal(p) for p in pesos]
+    total = Decimal(total)
+    suma = sum(pesos)
+    if not pesos or suma <= 0 or total <= 0:
+        return [Decimal(0)] * len(pesos)
+    exactos = [p * total / suma for p in pesos]
+    pisos = [e.to_integral_value(rounding=ROUND_FLOOR) for e in exactos]
+    faltan = int(total - sum(pisos))
+    orden = sorted(range(len(pesos)), key=lambda i: (pisos[i] - exactos[i], i))  # mayor parte decimal primero
+    for i in orden[:faltan]:
+        pisos[i] += 1
+    return pisos
+
+
+@transaction.atomic
+def carga_masiva(cambios, modo, usuario, nota=""):
+    """Carga de stock de muchos productos a la vez.
+
+    `cambios`: lista de (producto, ubicacion, cantidad).
+    `modo`: "sumar" (ingreso: la cantidad se suma) o "fijar" (conteo: queda esa cantidad exacta).
+    Todo o nada: si algo falla, no se guarda nada. Devuelve (aplicados, sin_cambio).
+    Cada movimiento queda en el historial igual que si se hiciera uno por uno."""
+    aplicados = sin_cambio = 0
+    for producto, ubicacion, cantidad in cambios:
+        if modo == "fijar":
+            try:
+                ajustar(producto, ubicacion, cantidad, usuario, f"Conteo en lote. {nota}".strip())
+                aplicados += 1
+            except ErrorNegocio as e:
+                if "ya es la cantidad" in str(e):
+                    sin_cambio += 1
+                else:
+                    raise
+        else:
+            registrar_ingreso(producto, ubicacion, cantidad, usuario, f"Carga en lote. {nota}".strip())
+            aplicados += 1
+    return aplicados, sin_cambio
+
+
 # --------------------------------------------------------------------------
 # Ventas
 # --------------------------------------------------------------------------
@@ -191,7 +260,7 @@ def registrar_venta(vendedor, items, cliente="", observaciones="", aplicar_regla
         detalle_reglas=texto_reglas(totales["aplicadas"]),
         descuento_extra=totales["descuento_extra"], total=totales["total"],
     )
-    for it in items:
+    for it, calc in zip(items, totales["lineas"]):
         ub = it.get("ubicacion")
         faltante = 0
         if ub is not None:
@@ -202,7 +271,7 @@ def registrar_venta(vendedor, items, cliente="", observaciones="", aplicar_regla
         VentaItem.objects.create(
             venta=venta, producto=it["producto"], ubicacion=ub, cantidad=it["cantidad"],
             faltante=faltante, precio_lista=_q(it["producto"].precio),
-            precio_unitario=_q(it["precio_unitario"]),
+            precio_unitario=_q(it["precio_unitario"]), descuento=calc["descuento"],
         )
         if ub is not None:
             nota = f"Venta #{venta.pk}" + (f" (sin stock suficiente: faltaban {faltante})" if faltante else "")

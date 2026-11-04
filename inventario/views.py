@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Prefetch, Q, Sum
 from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -21,7 +21,10 @@ from . import servicios
 from . import catalogo_pdf
 from .fotos import foto_panel
 from .lineas import leer_decimal, leer_lineas
-from .models import Cotizacion, CotizacionItem, MovimientoStock, Stock, Ubicacion, Venta, VentaItem
+from .models import (
+    Cotizacion, CotizacionItem, MovimientoStock, PerfilVendedor, Stock, Ubicacion, Venta, VentaItem,
+    ids_ubicaciones_propias,
+)
 from .pdf import generar_pdf_cotizacion, generar_pdf_recibo
 from .servicios import ErrorNegocio
 
@@ -105,11 +108,21 @@ def _ids_valores(producto):
     return " " + " ".join(str(v.pk) for v in producto.atributos.all()) + " "
 
 
+def _lugares_con_propias(request):
+    """(ubicaciones activas, ids propias del usuario). Las propias van primero:
+    son donde vende; las demás se muestran solo como referencia."""
+    activas = list(Ubicacion.objects.filter(activa=True))
+    propias = set(ids_ubicaciones_propias(request.user, activas))
+    activas.sort(key=lambda u: u.pk not in propias)  # estable: propias primero, mismo orden entre sí
+    return activas, propias
+
+
 @login_required
 def stock_lista(request):
-    """Todos los productos con su stock. Los filtros (texto, categoría, material, lugar…)
-    se aplican al instante en el navegador (ver panel_vista.js)."""
-    ubicaciones = list(Ubicacion.objects.filter(activa=True))
+    """Todos los productos con su stock. El número grande es el de las ubicaciones del
+    usuario; el de las otras ubicaciones se ve aparte, como referencia. Los filtros (texto,
+    categoría, material, lugar…) se aplican al instante en el navegador (ver panel_vista.js)."""
+    ubicaciones, propias = _lugares_con_propias(request)
     productos = (
         Producto.objects.prefetch_related("stocks", "imagenes", "atributos").order_by("nombre")
     )
@@ -117,16 +130,33 @@ def stock_lista(request):
     filas = []
     for p in productos:
         por_ub = {s.ubicacion_id: s.cantidad for s in p.stocks.all() if s.ubicacion_id in ids_ub}
+        total_otras = sum(c for pk, c in por_ub.items() if pk not in propias)
         filas.append({
-            "producto": p, "total": sum(por_ub.values()), "foto": foto_panel(p),
+            "producto": p, "total": sum(c for pk, c in por_ub.items() if pk in propias),
+            "total_otras": total_otras, "foto": foto_panel(p),
+            "neg": sum(1 for pk, c in por_ub.items() if pk in propias and c < 0),
             "valores": _ids_valores(p),
             "precio": p.precio.quantize(Decimal("1"), rounding=ROUND_HALF_UP),
-            "lugares": [{"ubicacion": u, "cantidad": por_ub.get(u.pk, 0)} for u in ubicaciones],
+            "lugares": [{"ubicacion": u, "cantidad": por_ub.get(u.pk, 0), "propia": u.pk in propias}
+                        for u in ubicaciones],
+        })
+    resumen_ub = []
+    for u in ubicaciones:
+        cants = [f["lugares"][i]["cantidad"] for f in filas for i, x in enumerate(f["lugares"]) if x["ubicacion"].pk == u.pk]
+        resumen_ub.append({
+            "ubicacion": u, "propia": u.pk in propias,
+            "unidades": sum(c for c in cants if c > 0),
+            "productos": sum(1 for c in cants if c > 0),
+            "agotados": sum(1 for c in cants if c <= 0),
+            "por_cubrir": sum(-c for c in cants if c < 0),
         })
     return render(request, "panel/stock_lista.html", {
-        "filas": filas, "ubicaciones": ubicaciones,
-        # Unidades vendidas sin stock registrado (stock negativo), por cubrir
-        "por_cubrir": sum(-l["cantidad"] for f in filas for l in f["lugares"] if l["cantidad"] < 0),
+        "filas": filas, "ubicaciones": ubicaciones, "resumen_ub": resumen_ub, "ids_propias": propias,
+        "total_productos": len(filas),
+        "hay_otras": any(u.pk not in propias for u in ubicaciones),
+        "mis_ubicaciones": [u for u in ubicaciones if u.pk in propias],
+        # Unidades vendidas sin stock registrado (stock negativo) en MIS ubicaciones, por cubrir
+        "por_cubrir": sum(-l["cantidad"] for f in filas for l in f["lugares"] if l["propia"] and l["cantidad"] < 0),
         **_filtros_panel(),
     })
 
@@ -134,9 +164,10 @@ def stock_lista(request):
 @login_required
 def stock_producto(request, pk):
     producto = get_object_or_404(Producto.objects.select_related("categoria"), pk=pk)
-    ubicaciones = list(Ubicacion.objects.filter(activa=True))
+    ubicaciones, propias = _lugares_con_propias(request)
     cantidades = {s.ubicacion_id: s.cantidad for s in Stock.objects.filter(producto=producto)}
-    lugares = [{"ubicacion": u, "cantidad": cantidades.get(u.pk, 0)} for u in ubicaciones]
+    lugares = [{"ubicacion": u, "cantidad": cantidades.get(u.pk, 0), "propia": u.pk in propias} for u in ubicaciones]
+    mios = [l for l in lugares if l["propia"]]
     ventas_recientes = (
         VentaItem.objects.filter(producto=producto, venta__anulada=False)
         .select_related("venta", "venta__vendedor", "ubicacion").order_by("-venta__creado")[:10]
@@ -144,9 +175,71 @@ def stock_producto(request, pk):
     movimientos = MovimientoStock.objects.filter(producto=producto).select_related("ubicacion", "usuario")[:25]
     return render(request, "panel/stock_producto.html", {
         "producto": producto, "lugares": lugares, "ubicaciones": ubicaciones,
-        "total": sum(l["cantidad"] for l in lugares),
-        "por_cubrir": sum(-l["cantidad"] for l in lugares if l["cantidad"] < 0),
+        "hay_otras": len(mios) < len(lugares),
+        "total": sum(l["cantidad"] for l in mios),
+        "total_otras": sum(l["cantidad"] for l in lugares if not l["propia"]),
+        "por_cubrir": sum(-l["cantidad"] for l in mios if l["cantidad"] < 0),
         "ventas_recientes": ventas_recientes, "movimientos": movimientos,
+    })
+
+
+@solo_admin
+def stock_carga(request):
+    """Cargar stock de muchos productos a la vez (tabla: productos × ubicaciones).
+    Modo «sumar»: lo escrito se suma al stock. Modo «fijar»: conteo, queda esa cantidad."""
+    ubicaciones = list(Ubicacion.objects.filter(activa=True))
+    productos = list(Producto.objects.select_related("categoria").prefetch_related("stocks", "imagenes").order_by("nombre"))
+    por_id = {p.pk: p for p in productos}
+    por_ubic = {u.pk: u for u in ubicaciones}
+    modo = request.POST.get("modo") if request.POST.get("modo") in ("sumar", "fijar") else "sumar"
+    nota = request.POST.get("nota", "").strip()[:200]
+    escritos, errores, cambios = {}, [], []
+
+    if request.method == "POST":
+        for clave, valor in request.POST.items():
+            if not clave.startswith("c_") or not valor.strip():
+                continue
+            try:
+                _, pid, uid = clave.split("_")
+                producto, ubic = por_id[int(pid)], por_ubic[int(uid)]
+            except (ValueError, KeyError):
+                continue
+            escritos[clave] = valor.strip()
+            n = _entero(valor)
+            if n is None or (modo == "sumar" and n <= 0) or (modo == "fijar" and n < 0):
+                errores.append(f"{producto.codigo or producto.nombre} en {ubic.nombre}: "
+                               f"«{valor.strip()}» no es una cantidad válida"
+                               f"{' (debe ser mayor que 0)' if modo == 'sumar' else ' (0 o más)'}.")
+                continue
+            cambios.append((producto, ubic, n))
+        if not escritos and not errores:
+            errores.append("No escribiste ninguna cantidad.")
+        if not errores:
+            try:
+                cambios.sort(key=lambda c: (c[0].nombre.lower(), c[1].orden))
+                aplicados, sin_cambio = servicios.carga_masiva(cambios, modo, request.user, nota)
+                n_prod = len({c[0].pk for c in cambios})
+                texto = (f"Se actualizaron {aplicados} cantidad{'es' if aplicados != 1 else ''} "
+                         f"de {n_prod} producto{'s' if n_prod != 1 else ''}.")
+                if sin_cambio:
+                    texto += f" ({sin_cambio} ya tenía{'n' if sin_cambio != 1 else ''} esa cantidad.)"
+                messages.success(request, texto)
+                return redirect("panel:stock")
+            except ErrorNegocio as e:
+                errores.append(str(e))
+
+    filas = []
+    for p in productos:
+        hay = {s.ubicacion_id: s.cantidad for s in p.stocks.all()}
+        filas.append({
+            "producto": p, "foto": foto_panel(p),
+            "total": sum(hay.get(u.pk, 0) for u in ubicaciones),
+            "celdas": [{"ubicacion": u, "hay": hay.get(u.pk, 0), "campo": f"c_{p.pk}_{u.pk}",
+                        "valor": escritos.get(f"c_{p.pk}_{u.pk}", "")} for u in ubicaciones],
+        })
+    return render(request, "panel/stock_carga.html", {
+        "filas": filas, "ubicaciones": ubicaciones, "modo": modo, "nota": nota, "errores": errores,
+        "categorias": Categoria.objects.filter(productos__isnull=False).distinct().order_by("orden", "nombre"),
     })
 
 
@@ -208,10 +301,11 @@ def stock_ajuste(request, pk):
 # --------------------------------------------------------------------------
 # Formulario compartido de venta / cotización
 # --------------------------------------------------------------------------
-def _datos_productos():
-    """Productos con su stock por lugar (todos los lugares activos, incluso con
-    0 o negativo), para las tarjetas y el selector del formulario."""
-    ubicaciones = list(Ubicacion.objects.filter(activa=True))
+def _datos_productos(request):
+    """Productos con su stock por lugar (todos los lugares activos, incluso con 0 o
+    negativo), para las tarjetas y el selector del formulario. `total` es el de las
+    ubicaciones del usuario; `otras` el de las demás (solo referencia)."""
+    ubicaciones, propias = _lugares_con_propias(request)
     ids = {u.pk for u in ubicaciones}
     productos = Producto.objects.prefetch_related("stocks", "imagenes", "atributos").order_by("nombre")
     datos = []
@@ -222,18 +316,22 @@ def _datos_productos():
                 stock[str(s.ubicacion_id)] = s.cantidad
         datos.append({"id": p.pk, "nombre": p.nombre,
                       "precio": str(p.precio.quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
-                      "stock": stock, "total": sum(stock.values()), "foto": foto_panel(p),
+                      "stock": stock,
+                      "total": sum(c for k, c in stock.items() if int(k) in propias),
+                      "otras": sum(c for k, c in stock.items() if int(k) not in propias),
+                      "foto": foto_panel(p),
                       "categoria": str(p.categoria_id or ""), "valores": [v.pk for v in p.atributos.all()],
                       "codigo": p.codigo or ""})
-    return datos, ubicaciones
+    return datos, ubicaciones, propias
 
 
 def _contexto_formulario(request, tipo, previas=None, errores=None):
-    datos, ubicaciones = _datos_productos()
+    datos, ubicaciones, propias = _datos_productos(request)
     return {
         "tipo": tipo,
         "productos_json": datos,
-        "ubicaciones_json": [{"id": u.pk, "nombre": u.nombre} for u in ubicaciones],
+        "ubicaciones_json": [{"id": u.pk, "nombre": u.nombre, "propia": u.pk in propias} for u in ubicaciones],
+        "hay_otras": any(u.pk not in propias for u in ubicaciones),
         "filas_json": previas or [],
         "errores": errores or [],
         "post": request.POST if request.method == "POST" else {},
@@ -262,7 +360,8 @@ def calcular(request):
 @login_required
 def venta_nueva(request):
     if request.method == "POST":
-        lineas, errores, previas = leer_lineas(request.POST, con_ubicacion=True)
+        _, propias = _lugares_con_propias(request)
+        lineas, errores, previas = leer_lineas(request.POST, con_ubicacion=True, ubicaciones_permitidas=propias)
         if not errores:
             try:
                 venta = servicios.registrar_venta(
@@ -352,9 +451,37 @@ def _filtrar_y_ordenar(request, qs, modelo_item, campo_documento, campo_usuario)
 def ventas_lista(request):
     qs, filtros, ordenes = _filtrar_y_ordenar(request, _ventas_visibles(request), VentaItem, "venta_id", "vendedor")
 
+    ubicacion = request.GET.get("ubicacion", "")
+    if ubicacion == "ninguna":
+        qs = qs.filter(pk__in=VentaItem.objects.filter(ubicacion__isnull=True).values("venta_id"))
+    elif ubicacion.isdigit():
+        qs = qs.filter(pk__in=VentaItem.objects.filter(ubicacion_id=int(ubicacion)).values("venta_id"))
+    else:
+        ubicacion = ""
+    filtros["ubicacion"] = ubicacion
+
     validas = qs.filter(anulada=False)
     resumen = validas.aggregate(total=Sum("total"), n=Count("id"))
-    unidades = VentaItem.objects.filter(venta__in=validas).aggregate(u=Sum("cantidad"))["u"] or 0
+    items_validos = VentaItem.objects.filter(venta__in=validas)
+    if ubicacion == "ninguna":
+        items_validos = items_validos.filter(ubicacion__isnull=True)
+    elif ubicacion:
+        items_validos = items_validos.filter(ubicacion_id=int(ubicacion))
+    # Por ubicación: de dónde salió lo vendido. El monto es NETO: cada producto ya trae guardado su parte
+    # del descuento (se calcula producto por producto al vender), así que la suma de todas las
+    # ubicaciones da exactamente el «Total vendido». (Con filtro de ubicación se muestra solo esa fila.)
+    neto = ExpressionWrapper(F("cantidad") * F("precio_unitario") - F("descuento"),
+                             output_field=DecimalField(max_digits=14, decimal_places=2))
+    por_ubicacion = [
+        {"nombre": r["ubicacion__nombre"] or "Sin descontar de ningún lugar", "unidades": r["u"], "monto": r["m"]}
+        for r in items_validos.values("ubicacion__nombre")
+        .annotate(u=Sum("cantidad"), m=Sum(neto)).order_by("-u", "ubicacion__nombre")
+    ]
+    mas_vendidos = list(
+        items_validos.values("producto__codigo", "producto__nombre")
+        .annotate(u=Sum("cantidad")).order_by("-u", "producto__nombre")[:5]
+    )
+    unidades = items_validos.aggregate(u=Sum("cantidad"))["u"] or 0
     por_vendedor = []
     if request.user.is_staff:
         por_vendedor = list(
@@ -362,6 +489,8 @@ def ventas_lista(request):
         )
     return render(request, "panel/ventas_lista.html", {
         "ventas": qs[:200], "resumen": resumen, "unidades": unidades, "por_vendedor": por_vendedor,
+        "por_ubicacion": por_ubicacion, "mas_vendidos": mas_vendidos,
+        "ubicaciones": Ubicacion.objects.filter(activa=True),
         "vendedores": User.objects.filter(ventas__isnull=False).distinct() if request.user.is_staff else [],
         "f": filtros, "ordenes": ordenes,
     })
@@ -489,24 +618,57 @@ def catalogo_pdf_vista(request):
 # --------------------------------------------------------------------------
 # Usuarios (solo admin): usuario + contraseña, sin más
 # --------------------------------------------------------------------------
+def _leer_ubicaciones_post(request):
+    """Ubicaciones activas marcadas en el formulario (ids inválidos se ignoran)."""
+    ids = [int(i) for i in request.POST.getlist("ubicaciones") if i.isdigit()]
+    return list(Ubicacion.objects.filter(activa=True, pk__in=ids))
+
+
 @solo_admin
 def usuarios(request):
     if request.method == "POST":
         nombre = request.POST.get("username", "").strip()
         clave = request.POST.get("password", "")
+        elegidas = _leer_ubicaciones_post(request)
         if not nombre or not clave:
             messages.error(request, "Escribe un usuario y una contraseña.")
         elif len(nombre) > 150:
             messages.error(request, "El usuario puede tener hasta 150 caracteres.")
         elif User.objects.filter(username__iexact=nombre).exists():
             messages.error(request, f"Ya existe un usuario llamado «{nombre}».")
+        elif not elegidas and Ubicacion.objects.filter(activa=True).exists():
+            messages.error(request, "Elige al menos una ubicación donde venderá este usuario.")
         else:
             # create_user no valida el formato: se aceptan espacios, tildes, símbolos, etc.
-            User.objects.create_user(username=nombre, password=clave)
+            u = User.objects.create_user(username=nombre, password=clave)
+            PerfilVendedor.objects.create(usuario=u).ubicaciones.set(elegidas)
             messages.success(request, f"Usuario «{nombre}» creado.")
         return redirect("panel:usuarios")
-    lista = User.objects.annotate(n_ventas=Count("ventas", filter=Q(ventas__anulada=False))).order_by("-is_staff", "username")
-    return render(request, "panel/usuarios.html", {"usuarios": lista})
+    lista = list(
+        User.objects.annotate(n_ventas=Count("ventas", filter=Q(ventas__anulada=False)))
+        .select_related("perfil_vendedor").prefetch_related("perfil_vendedor__ubicaciones")
+        .order_by("-is_staff", "username")
+    )
+    for u in lista:
+        perfil = getattr(u, "perfil_vendedor", None)
+        u.ubicaciones_ids = {x.pk for x in perfil.ubicaciones.all()} if perfil else set()
+    return render(request, "panel/usuarios.html", {
+        "usuarios": lista, "ubicaciones": list(Ubicacion.objects.filter(activa=True)),
+    })
+
+
+@solo_admin
+@require_POST
+def usuario_ubicaciones(request, pk):
+    u = get_object_or_404(User, pk=pk)
+    elegidas = _leer_ubicaciones_post(request)
+    if not elegidas and not u.is_staff and Ubicacion.objects.filter(activa=True).exists():
+        messages.error(request, "Elige al menos una ubicación.")
+    else:
+        perfil, _ = PerfilVendedor.objects.get_or_create(usuario=u)
+        perfil.ubicaciones.set(elegidas)
+        messages.success(request, f"Ubicaciones de «{u.username}» actualizadas.")
+    return redirect("panel:usuarios")
 
 
 @solo_admin

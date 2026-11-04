@@ -13,6 +13,10 @@
   const ubic = {};
   ubicLista.forEach((u) => (ubic[String(u.id)] = u.nombre));
   const idsUbic = ubicLista.map((u) => String(u.id));
+  // Solo se puede vender desde las ubicaciones propias; las demás se ven en gris como referencia.
+  const propia = {};
+  ubicLista.forEach((u) => (propia[String(u.id)] = u.propia !== false));
+  const idsPropias = idsUbic.filter((id) => propia[id]);
   const porId = {};
   productos.forEach((p) => (porId[p.id] = p));
 
@@ -49,10 +53,15 @@
     b.dataset.valores = " " + p.valores.join(" ") + " ";
     b.dataset.precio = p.precio;
     b.dataset.total = p.total;
+    b.dataset.otras = p.otras;
+    b.dataset.neg = idsPropias.filter((id) => p.stock[id] < 0).length;
     idsUbic.forEach((id) => { b.dataset["u" + id] = p.stock[id]; });
     const lugares = idsUbic
       .filter((id) => p.stock[id] !== 0)
-      .map((id) => "<span" + (p.stock[id] < 0 ? ' class="neg"' : "") + ">" + esc(ubic[id]) + " <b>" + p.stock[id] + "</b></span>")
+      .map((id) => {
+        const clases = (p.stock[id] < 0 ? "neg " : "") + (propia[id] ? "" : "otra");
+        return "<span" + (clases.trim() ? ' class="' + clases.trim() + '"' : "") + ">" + esc(ubic[id]) + " <b>" + p.stock[id] + "</b></span>";
+      })
       .join("");
     b.innerHTML =
       '<span class="p-prod-foto">' + (p.foto ? '<img src="' + esc(p.foto) + '" alt="" loading="lazy">' : '<i class="p-sinfoto"></i>') + "</span>" +
@@ -62,7 +71,7 @@
       (p.codigo ? '<span class="p-prod-cod">' + esc(p.codigo) + "</span>" : "") +
       '<span class="p-prod-nombre">' + esc(p.nombre) + "</span>" +
       '<span class="p-prod-precio">Bs. ' + esc(p.precio) + "</span>" +
-      '<span class="p-prod-lugares">' + (lugares || '<span class="sin">Sin stock</span>') + "</span></span>";
+      '<span class="p-prod-lugares">' + (lugares || '<span class="sin">Sin stock</span>') + (lugares && p.total <= 0 && p.otras > 0 ? '<span class="sin">Sin stock aquí</span>' : "") + "</span></span>";
     b.addEventListener("click", (e) => {
       if (e.target.closest(".p-menos")) { quitarUno(p.id); return; }
       agregarProducto(p.id);
@@ -95,9 +104,9 @@
   form.addEventListener("change", contadores);
 
   function mejorLugar(p) {
-    // El lugar con más stock; si no hay en ninguno, el primero de la lista.
-    let mejor = idsUbic[0] || "";
-    idsUbic.forEach((id) => { if (p.stock[id] > (p.stock[mejor] ?? -Infinity)) mejor = id; });
+    // De MIS ubicaciones, la que tiene más stock; si no hay en ninguna, la primera.
+    let mejor = idsPropias[0] || "";
+    idsPropias.forEach((id) => { if (p.stock[id] > (p.stock[mejor] ?? -Infinity)) mejor = id; });
     return mejor;
   }
 
@@ -148,7 +157,7 @@
       sel.innerHTML = '<option value="">—</option>';
       return;
     }
-    idsUbic.forEach((id) => {
+    idsPropias.forEach((id) => {
       const o = document.createElement("option");
       o.value = id;
       o.textContent = ubic[id] + " (hay " + p.stock[id] + ")";

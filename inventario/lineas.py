@@ -23,12 +23,13 @@ def leer_decimal(texto, defecto=Decimal("0")):
     return defecto if d is None else d
 
 
-def leer_lineas(post, con_ubicacion, estricto=True):
+def leer_lineas(post, con_ubicacion, estricto=True, ubicaciones_permitidas=None):
     """Devuelve (lineas, errores, filas_previas).
 
     - lineas: dicts listos para los servicios (producto, ubicacion, cantidad, precio_unitario).
     - errores: textos para mostrar al usuario (solo si `estricto`).
     - filas_previas: lo que se escribió, para volver a pintar el formulario si hay error.
+    - ubicaciones_permitidas: ids desde los que este usuario puede vender (None = cualquiera).
     """
     productos = post.getlist("producto")
     ubicaciones = post.getlist("ubicacion")
@@ -69,6 +70,10 @@ def leer_lineas(post, con_ubicacion, estricto=True):
             ubicacion = ubs.get(int(ub_txt)) if ub_txt.isdigit() else None
             if ubicacion is None:
                 errores.append(f"Fila {n} ({producto.nombre}): el lugar elegido no es válido.")
+                continue
+            if ubicaciones_permitidas is not None and ubicacion.pk not in ubicaciones_permitidas:
+                errores.append(f"Fila {n} ({producto.nombre}): no puedes vender desde {ubicacion.nombre}; "
+                               "esa ubicación no está asignada a tu usuario (solo la ves como referencia).")
                 continue
         lineas.append({"producto": producto, "ubicacion": ubicacion, "cantidad": cantidad, "precio_unitario": precio})
     return lineas, (errores if estricto else []), previas

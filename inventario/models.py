@@ -31,6 +31,38 @@ class Ubicacion(models.Model):
         return self.nombre
 
 
+class PerfilVendedor(models.Model):
+    """Dónde vende cada usuario. El usuario ve y vende desde estas ubicaciones y,
+    además, puede CONSULTAR (solo como referencia) el stock de las demás.
+
+    Un usuario sin perfil o sin ubicaciones asignadas se trata como «todas son mías»
+    (así los usuarios creados antes de este cambio siguen funcionando igual)."""
+
+    usuario = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="perfil_vendedor")
+    ubicaciones = models.ManyToManyField(Ubicacion, blank=True, related_name="vendedores")
+
+    class Meta:
+        verbose_name = "Ubicaciones del vendedor"
+        verbose_name_plural = "Ubicaciones de los vendedores"
+
+    def __str__(self):
+        return f"{self.usuario} → {', '.join(u.nombre for u in self.ubicaciones.all()) or 'todas'}"
+
+
+def ids_ubicaciones_propias(usuario, activas):
+    """Ids (de la lista `activas`) que son «propias» del usuario.
+    Admin, o usuario sin ubicaciones asignadas → todas."""
+    todas = [u.pk for u in activas]
+    if usuario is None or usuario.is_staff:
+        return todas
+    perfil = getattr(usuario, "perfil_vendedor", None)
+    if perfil is None:
+        return todas
+    asignadas = {u.pk for u in perfil.ubicaciones.all()}
+    propias = [pk for pk in todas if pk in asignadas]
+    return propias or todas
+
+
 class Stock(models.Model):
     """Cuántas unidades de un producto hay en una ubicación."""
 
@@ -199,6 +231,10 @@ class VentaItem(models.Model):
         default=0, help_text="Unidades que se vendieron aunque no había stock registrado suficiente")
     precio_lista = models.DecimalField(**DINERO, help_text="Precio del catálogo al momento de vender")
     precio_unitario = models.DecimalField(**DINERO, help_text="Precio realmente cobrado")
+    descuento = models.DecimalField(
+        **DINERO, default=Decimal("0"),
+        help_text="Descuento (promociones + adicional) que le tocó a esta línea, en Bs. enteros. "
+                  "La suma de todas las líneas es el descuento de la venta.")
 
     class Meta:
         verbose_name = "Ítem de venta"
@@ -210,6 +246,11 @@ class VentaItem(models.Model):
     @property
     def subtotal(self):
         return self.cantidad * self.precio_unitario
+
+    @property
+    def neto(self):
+        """Lo que realmente se cobró por esta línea (ya con su parte de los descuentos)."""
+        return self.subtotal - self.descuento
 
 
 class Cotizacion(models.Model):

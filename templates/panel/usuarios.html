@@ -4,11 +4,16 @@
 <h1>Usuarios</h1>
 <form class="p-card" method="post">{% csrf_token %}
   <h2>Crear usuario vendedor</h2>
-  <p class="p-soft">Solo usuario y contraseña, sin restricciones de formato. Los vendedores ven el stock, venden, cotizan y ven sus propias ventas.</p>
+  <p class="p-soft">Usuario y contraseña (sin restricciones de formato) y las ubicaciones donde venderá. Los vendedores venden y descuentan stock solo de sus ubicaciones; el stock de las demás lo ven como referencia.</p>
   <div class="p-dos">
     <label>Usuario <input type="text" name="username" maxlength="150" autocapitalize="none" autocomplete="off" required></label>
     <label>Contraseña <input type="text" name="password" autocomplete="off" required></label>
   </div>
+  <fieldset class="p-ubicaciones">
+    <legend>Ubicación(es) donde venderá</legend>
+    {% for ub in ubicaciones %}<label class="p-check"><input type="checkbox" name="ubicaciones" value="{{ ub.pk }}"> {{ ub.nombre }}</label>
+    {% empty %}<span class="p-soft">Aún no hay ubicaciones. Créalas en <a href="/admin/inventario/ubicacion/">Admin → Ubicaciones</a>.</span>{% endfor %}
+  </fieldset>
   <button class="p-btn" type="submit">Crear</button>
 </form>
 
@@ -17,7 +22,15 @@
   {% for u in usuarios %}
   <div class="p-usuario {% if not u.is_active %}inactivo{% endif %}">
     <div><b>{{ u.username }}</b> {% if u.is_staff %}<span class="p-tag">admin</span>{% endif %}{% if not u.is_active %}<span class="p-tag warn">desactivado</span>{% endif %}<br>
-      <span class="p-soft">{{ u.n_ventas }} venta{{ u.n_ventas|pluralize }} · último ingreso: {{ u.last_login|date:"d/m/Y H:i"|default:"nunca" }}</span></div>
+      <span class="p-soft">{{ u.n_ventas }} venta{{ u.n_ventas|pluralize }} · último ingreso: {{ u.last_login|date:"d/m/Y H:i"|default:"nunca" }}</span>
+      {% if not u.is_staff %}
+      <form method="post" action="{% url 'panel:usuario_ubicaciones' u.pk %}" class="p-inline p-ubic-form">{% csrf_token %}
+        <span class="p-soft">Vende en:</span>
+        {% for ub in ubicaciones %}<label class="p-check"><input type="checkbox" name="ubicaciones" value="{{ ub.pk }}" {% if ub.pk in u.ubicaciones_ids %}checked{% endif %}> {{ ub.nombre }}</label>{% endfor %}
+        <button class="p-btn p-btn-sec" type="submit">Guardar</button>
+        {% if not u.ubicaciones_ids %}<span class="p-tag warn">sin asignar: ve todas</span>{% endif %}
+      </form>
+      {% endif %}</div>
     <form method="post" action="{% url 'panel:usuario_clave' u.pk %}" class="p-inline">{% csrf_token %}
       <input type="text" name="password" placeholder="Nueva contraseña" autocomplete="off" required>
       <button class="p-btn p-btn-sec" type="submit">Cambiar</button>

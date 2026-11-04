@@ -10,6 +10,7 @@ urlpatterns = [
     path("salir/", LogoutView.as_view(), name="logout"),
 
     path("", views.stock_lista, name="stock"),
+    path("carga/", views.stock_carga, name="stock_carga"),
     path("producto/<int:pk>/", views.stock_producto, name="stock_producto"),
     path("producto/<int:pk>/ingreso/", views.stock_ingreso, name="stock_ingreso"),
     path("producto/<int:pk>/traslado/", views.stock_traslado, name="stock_traslado"),
@@ -31,5 +32,6 @@ urlpatterns = [
 
     path("usuarios/", views.usuarios, name="usuarios"),
     path("usuarios/<int:pk>/clave/", views.usuario_clave, name="usuario_clave"),
+    path("usuarios/<int:pk>/ubicaciones/", views.usuario_ubicaciones, name="usuario_ubicaciones"),
     path("usuarios/<int:pk>/activar/", views.usuario_activar, name="usuario_activar"),
 ]

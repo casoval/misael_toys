@@ -1,0 +1,73 @@
+{% extends "panel/base_panel.html" %}
+{% load static %}
+{% block titulo %}Cargar stock en lote{% endblock %}
+{% block contenido %}
+<p><a href="{% url 'panel:stock' %}">← Volver al stock</a></p>
+<h1>Cargar stock en lote</h1>
+<p class="p-soft">Escribe las cantidades en la tabla (solo las celdas que quieras cambiar) y guarda <b>una sola vez</b>. Usa <kbd>Enter</kbd> para bajar a la celda de abajo y <kbd>Tab</kbd> para ir a la siguiente ubicación. Todo queda en el historial.</p>
+
+{% if errores %}<div class="p-msg error"><b>No se guardó nada.</b> Corrige esto y vuelve a guardar:<ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% if not ubicaciones %}<div class="p-msg warning">Primero crea las ubicaciones en <a href="/admin/inventario/ubicacion/">Admin → Ubicaciones</a>.</div>{% endif %}
+
+<form method="post" class="p-carga" data-carga>{% csrf_token %}
+  <div class="p-card p-carga-barra">
+    <div class="p-modos" role="radiogroup" aria-label="Qué hacer con lo que escribes">
+      <label class="p-check"><input type="radio" name="modo" value="sumar" {% if modo == "sumar" %}checked{% endif %}> <span><b>Sumar</b> al stock actual (llegó mercadería / se fabricó)</span></label>
+      <label class="p-check"><input type="radio" name="modo" value="fijar" {% if modo == "fijar" %}checked{% endif %}> <span><b>Fijar</b> la cantidad real (conteo físico)</span></label>
+    </div>
+    <label class="p-carga-nota">Nota (opcional) <input type="text" name="nota" maxlength="200" value="{{ nota }}" placeholder="Ej: lote de octubre / inventario inicial"></label>
+  </div>
+
+  <div class="p-fbar">
+    <div class="p-frow1">
+      <input type="search" class="p-buscar" placeholder="Buscar por nombre o código…" data-c-q autocomplete="off">
+      <select data-c-cat aria-label="Categoría" class="p-carga-sel">
+        <option value="">Todas las categorías</option>
+        {% for c in categorias %}<option value="{{ c.pk }}">{{ c.nombre }}</option>{% endfor %}
+      </select>
+      <label class="p-check"><input type="checkbox" data-c-vacios> Solo productos sin stock (0 o por cubrir)</label>
+      <label class="p-check"><input type="checkbox" data-c-escritos> Solo los que estoy cambiando</label>
+    </div>
+  </div>
+
+  <div class="p-tabla-wrap">
+    <table class="p-tabla p-tabla-carga">
+      <thead>
+        <tr>
+          <th class="t-prod">Producto <small data-c-visibles class="p-soft"></small></th>
+          {% for u in ubicaciones %}
+          <th class="t-num" data-col="{{ u.pk }}">{{ u.nombre }}
+            <span class="p-relleno" title="Escribe una cantidad y toca ↓ para ponerla en todos los productos que ves ahora">
+              <input type="number" min="0" inputmode="numeric" placeholder="todos" data-r-valor aria-label="Cantidad para todos en {{ u.nombre }}">
+              <button type="button" data-r-btn>↓</button>
+            </span>
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for f in filas %}
+        <tr data-fila data-nombre="{{ f.producto.nombre }}" data-codigo="{{ f.producto.codigo|default:'' }}" data-categoria="{{ f.producto.categoria_id|default:'' }}" data-total="{{ f.total }}">
+          <td class="t-prod">
+            <span class="t-foto">{% if f.foto %}<img src="{{ f.foto }}" alt="" loading="lazy">{% else %}<i class="p-sinfoto"></i>{% endif %}</span>
+            <span class="t-txt">{% if f.producto.codigo %}<span class="p-prod-cod">{{ f.producto.codigo }}</span> {% endif %}<b>{{ f.producto.nombre }}</b></span>
+          </td>
+          {% for c in f.celdas %}
+          <td class="t-num">
+            <small class="p-hay {% if c.hay < 0 %}neg{% elif c.hay == 0 %}cero{% endif %}">hay {{ c.hay }}</small>
+            <input type="number" name="{{ c.campo }}" value="{{ c.valor }}" inputmode="numeric" min="0" data-celda data-col="{{ c.ubicacion.pk }}" aria-label="{{ f.producto.nombre }} en {{ c.ubicacion.nombre }}">
+          </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="p-totalbar p-carga-guardar">
+    <span class="p-soft" data-c-contador aria-live="polite">Aún no escribiste nada.</span>
+    <button class="p-btn p-btn-total" type="submit" data-c-guardar>Guardar todo</button>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/panel_carga.js' %}"></script>{% endblock %}

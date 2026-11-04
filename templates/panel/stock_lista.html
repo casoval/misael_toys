@@ -2,11 +2,30 @@
 {% load static %}
 {% block titulo %}Stock{% endblock %}
 {% block contenido %}
-<div class="p-titulo"><h1>Stock</h1></div>
-{% include "panel/_filtros.html" with unidades=True %}
+<div class="p-titulo"><h1>Stock</h1>
+  {% if user.is_staff %}<a class="p-btn" href="{% url 'panel:stock_carga' %}" title="Agregar o contar el stock de muchos productos de una sola vez">＋ Cargar stock en lote</a>{% endif %}
+</div>
+
+{% if resumen_ub %}
+<div class="p-resumen-ub" role="group" aria-label="Resumen por ubicación (toca una para filtrar)">
+  {% for r in resumen_ub %}
+  <button type="button" class="p-rub {% if not r.propia and hay_otras %}otra{% endif %}" data-r-lugar="{{ r.ubicacion.pk }}" title="Toca para ver solo los productos que hay en {{ r.ubicacion.nombre }}">
+    <span class="p-rub-n">{{ r.ubicacion.nombre }}{% if r.propia and hay_otras %} <i class="p-tag">mía</i>{% endif %}</span>
+    <b>{{ r.unidades }}</b> <span class="p-soft">unid. · {{ r.productos }} de {{ total_productos }} prod.</span>
+    {% if r.por_cubrir %}<span class="p-rub-neg">⚠ {{ r.por_cubrir }} por cubrir</span>{% endif %}
+  </button>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% include "panel/_filtros.html" with unidades=True tabla=True %}
 
 {% if not ubicaciones %}
 <div class="p-msg warning">Todavía no hay lugares. Créalos en <a href="/admin/inventario/ubicacion/">Admin → Ubicaciones</a>.</div>
+{% endif %}
+
+{% if hay_otras %}
+<p class="p-soft p-misub">Tu stock: <b>{% for u in mis_ubicaciones %}{{ u.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %}</b>. Las demás ubicaciones se ven en gris, solo como referencia.</p>
 {% endif %}
 
 {% if por_cubrir %}
@@ -18,7 +37,7 @@
 {% for f in filas %}
   <a class="p-prod {% if f.total <= 0 %}agotado{% endif %}" href="{% url 'panel:stock_producto' f.producto.pk %}" data-id="{{ f.producto.pk }}" data-nombre="{{ f.producto.nombre }}" data-codigo="{{ f.producto.codigo|default:'' }}"
      data-categoria="{{ f.producto.categoria_id|default:'' }}" data-valores="{{ f.valores }}"
-     data-precio="{{ f.precio|floatformat:0 }}" data-total="{{ f.total }}"{% for l in f.lugares %} data-u{{ l.ubicacion.pk }}="{{ l.cantidad }}"{% endfor %}>
+     data-precio="{{ f.precio|floatformat:0 }}" data-total="{{ f.total }}" data-otras="{{ f.total_otras }}" data-neg="{{ f.neg }}"{% for l in f.lugares %} data-u{{ l.ubicacion.pk }}="{{ l.cantidad }}"{% endfor %}>
     <span class="p-prod-foto">{% if f.foto %}<img src="{{ f.foto }}" alt="" loading="lazy">{% else %}<i class="p-sinfoto"></i>{% endif %}</span>
     <b class="p-badge {% if f.total <= 0 %}cero{% endif %}">{{ f.total }}</b>
     <span class="p-prod-cuerpo">
@@ -26,14 +45,46 @@
       <span class="p-prod-nombre">{{ f.producto.nombre }}</span>
       <span class="p-prod-precio">Bs. {{ f.producto.precio|floatformat:0 }}</span>
       <span class="p-prod-lugares">
-        {% for l in f.lugares %}{% if l.cantidad %}<span {% if l.cantidad < 0 %}class="neg"{% endif %}>{{ l.ubicacion.nombre }} <b>{{ l.cantidad }}</b></span>{% endif %}{% endfor %}
-        {% if f.total == 0 %}<span class="sin">Agotado</span>{% endif %}
+        {% for l in f.lugares %}{% if l.cantidad %}<span class="{% if l.cantidad < 0 %}neg{% endif %}{% if not l.propia %} otra{% endif %}">{{ l.ubicacion.nombre }} <b>{{ l.cantidad }}</b></span>{% endif %}{% endfor %}
+        {% if f.total == 0 %}<span class="sin">{% if f.total_otras > 0 %}Sin stock aquí{% else %}Agotado{% endif %}</span>{% endif %}
       </span>
     </span>
   </a>
 {% empty %}
   <p class="p-soft">No hay productos con esos filtros.</p>
 {% endfor %}
+</div>
+
+{# Vista de tabla: una columna por ubicación y totales de lo que se está viendo #}
+<div class="p-tabla-wrap" data-tabla-contenedor hidden>
+  <table class="p-tabla">
+    <thead>
+      <tr>
+        <th class="t-prod" data-orden-col="nombre">Producto</th>
+        <th class="t-num" data-orden-col="precio">Precio</th>
+        {% for u in ubicaciones %}<th class="t-num {% if hay_otras and u.pk not in ids_propias %}otra{% endif %}" data-orden-col="u{{ u.pk }}" data-col-u="{{ u.pk }}" title="Ordenar por {{ u.nombre }}">{{ u.nombre }}{% if hay_otras and u.pk not in ids_propias %}<small> (ref.)</small>{% endif %}</th>{% endfor %}
+        {% if hay_otras %}<th class="t-num" data-orden-col="total">Mías</th><th class="t-num otra" data-orden-col="otras">Otras</th>{% else %}<th class="t-num" data-orden-col="total">Total</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for f in filas %}
+      <tr data-id="{{ f.producto.pk }}" data-nombre="{{ f.producto.nombre }}" data-codigo="{{ f.producto.codigo|default:'' }}" data-categoria="{{ f.producto.categoria_id|default:'' }}" data-valores="{{ f.valores }}"
+          data-precio="{{ f.precio|floatformat:0 }}" data-total="{{ f.total }}" data-otras="{{ f.total_otras }}" data-neg="{{ f.neg }}"{% for l in f.lugares %} data-u{{ l.ubicacion.pk }}="{{ l.cantidad }}"{% endfor %}>
+        <td class="t-prod"><a href="{% url 'panel:stock_producto' f.producto.pk %}">{% if f.producto.codigo %}<span class="p-prod-cod">{{ f.producto.codigo }}</span> {% endif %}{{ f.producto.nombre }}</a></td>
+        <td class="t-num">{{ f.producto.precio|floatformat:0 }}</td>
+        {% for l in f.lugares %}<td class="t-num {% if not l.propia and hay_otras %}otra{% endif %} {% if l.cantidad < 0 %}neg{% elif l.cantidad == 0 %}cero{% endif %}">{{ l.cantidad }}</td>{% endfor %}
+        {% if hay_otras %}<td class="t-num t-total {% if f.total <= 0 %}cero{% endif %}">{{ f.total }}</td><td class="t-num otra">{{ f.total_otras }}</td>{% else %}<td class="t-num t-total {% if f.total <= 0 %}cero{% endif %}">{{ f.total }}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td class="t-prod">Totales de lo que ves <small class="p-soft">(<span data-t-n></span> productos)</small></td><td></td>
+        {% for u in ubicaciones %}<td class="t-num {% if hay_otras and u.pk not in ids_propias %}otra{% endif %}" data-t-u="{{ u.pk }}">0</td>{% endfor %}
+        {% if hay_otras %}<td class="t-num" data-t-total>0</td><td class="t-num otra" data-t-otras>0</td>{% else %}<td class="t-num" data-t-total>0</td>{% endif %}
+      </tr>
+    </tfoot>
+  </table>
 </div>
 {% endblock %}
 {% block scripts %}<script src="{% static 'js/panel_vista.js' %}"></script>{% endblock %}

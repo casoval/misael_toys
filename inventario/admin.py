@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    Cotizacion, CotizacionItem, MovimientoStock, ReglaDescuento, Stock, Ubicacion, Venta, VentaItem,
+    Cotizacion, CotizacionItem, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta, VentaItem,
 )
 
 
@@ -9,6 +9,16 @@ from .models import (
 class UbicacionAdmin(admin.ModelAdmin):
     list_display = ("nombre", "orden", "activa")
     list_editable = ("orden", "activa")
+
+
+@admin.register(PerfilVendedor)
+class PerfilVendedorAdmin(admin.ModelAdmin):
+    list_display = ("usuario", "lista_ubicaciones")
+    filter_horizontal = ("ubicaciones",)
+
+    @admin.display(description="Ubicaciones")
+    def lista_ubicaciones(self, obj):
+        return ", ".join(u.nombre for u in obj.ubicaciones.all()) or "todas"
 
 
 @admin.register(ReglaDescuento)

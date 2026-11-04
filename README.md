@@ -66,7 +66,12 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
 - **Descuentos / promociones** (*Admin → Reglas de descuento*): ya vienen las dos
   reglas actuales (5+ productos → 5 %, 10+ → 10 %). Puedes crear más: por
   categoría, por producto, con fechas de vigencia, acumulables o no. Las reglas
-  no acumulables no se suman: se aplica solo la que más descuenta. Además cada
+  no acumulables no se suman: se aplica solo la que más descuenta.
+  **El descuento se calcula producto por producto**: cada línea (cantidad × precio) recibe su propio %
+  ya redondeado a entero (0,5 sube) y el total es la suma de las líneas, así nunca hay decimales sueltos.
+  El descuento adicional en Bs. se reparte entre las líneas en proporción a lo que valen (suma exacta).
+  Cada producto de una venta guarda su descuento (`VentaItem.descuento`), por eso el «monto por ubicación»
+  de Ventas suma exactamente el total vendido. Ej.: 10 % sobre 21, 36 y 15 Bs → 2, 4 y 2 = 8 de descuento. Además cada
   venta/cotización admite un descuento adicional manual en Bs.
 - **Diseño compacto**: el panel usa todo el ancho de la pantalla. En Vender/Cotizar, en pantallas
   grandes los productos van a la izquierda y el detalle con el total a la derecha (siempre
@@ -128,8 +133,29 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
 - **Cotizaciones**: eliges productos y cantidades, ves el total con las
   promociones aplicadas y descargas un **PDF** para el cliente (sin stock ni
   lugares). No descuenta stock.
+- **Ubicaciones por vendedor**: al crear un vendedor se eligen **una o varias ubicaciones** donde
+  vende (obligatorio si existen ubicaciones activas); el admin puede cambiarlas después en
+  `/panel/usuarios/`. El vendedor ve **su stock** (número grande de la tarjeta, ficha del producto y
+  «Solo con stock») y, **en gris y solo como referencia**, el stock de las demás ubicaciones, para saber
+  si el producto existe en otro lado. En Vender solo puede descontar de **sus** ubicaciones (también se
+  valida en el servidor). El admin y los usuarios sin ubicaciones asignadas (anteriores a este cambio)
+  ven todas como propias. Modelo: `PerfilVendedor` (también editable en *Admin → Ubicaciones de los
+  vendedores*).
+- **Cargar stock en lote** (solo admin, botón «＋ Cargar stock en lote» en Stock, `/panel/carga/`): una tabla
+  de productos × ubicaciones donde se escriben las cantidades de muchos productos y se guarda **una sola
+  vez** (todo o nada, con historial por cada movimiento). Modo **Sumar** (llegó mercadería: se suma, y compensa
+  stock negativo) o **Fijar** (conteo físico: queda esa cantidad). Incluye buscador, filtro por categoría,
+  «solo sin stock», «solo los que estoy cambiando», relleno de una columna completa con un valor, `Enter` para
+  bajar a la celda de abajo y contador de cambios.
+- **Más información en Stock / Vender / Cotizar**: resumen por ubicación (unidades, productos con stock, por
+  cubrir; se toca para filtrar), filtro de **estado del stock** (con stock, stock bajo (queda 1 unidad), agotado, sin stock aquí
+  pero hay en otra ubicación, agotado en todas, por cubrir), y en Stock una **vista «Tabla»** con una columna
+  por ubicación, totales de lo que se está viendo y orden al tocar el título de cada columna. En **Ventas**:
+  filtro «salió de [ubicación]», resumen por ubicación (monto neto: cada producto trae guardado su
+  descuento, así la suma por ubicación cuadra exacto con el total vendido) y los
+  5 productos más vendidos.
 - **Usuarios** (solo admin, `/panel/usuarios/`): crear vendedor = usuario +
-  contraseña, sin restricciones de formato ni de largo. Se puede cambiar la
+  contraseña (sin restricciones de formato ni de largo) + ubicaciones. Se puede cambiar la
   contraseña y desactivar. Los vendedores no entran a `/admin/`. Como las
   contraseñas no se validan, el login se bloquea 10 min tras 8 intentos fallidos.
 

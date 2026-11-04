@@ -10,7 +10,7 @@
 <div class="p-card">
   <div class="p-tabla-wrap">
     <table class="p-tabla">
-      <thead><tr><th class="n">N°</th><th>Cód.</th><th>Producto</th><th class="c">Cant.</th><th class="d">P. unitario</th><th>Salió de</th><th class="d">Subtotal</th></tr></thead>
+      <thead><tr><th class="n">N°</th><th>Cód.</th><th>Producto</th><th class="c">Cant.</th><th class="d">P. unitario</th><th>Salió de</th><th class="d">Subtotal (con descuento)</th></tr></thead>
       <tbody>
       {% for it in items %}
         <tr>
@@ -22,7 +22,7 @@
           <td class="c">{{ it.cantidad }}</td>
           <td class="d">Bs. {{ it.precio_unitario|floatformat:0 }}{% if it.precio_unitario != it.precio_lista %}<small class="p-soft">(lista: {{ it.precio_lista|floatformat:0 }})</small>{% endif %}</td>
           <td class="p-soft">{% if it.ubicacion %}{{ it.ubicacion }}{% else %}sin descontar{% endif %}</td>
-          <td class="d"><b>Bs. {{ it.subtotal|floatformat:0 }}</b></td>
+          <td class="d"><b>Bs. {{ it.neto|floatformat:0 }}</b>{% if it.descuento %}<small class="p-soft"> (− {{ it.descuento|floatformat:0 }} desc.)</small>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>

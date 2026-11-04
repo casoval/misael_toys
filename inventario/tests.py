@@ -14,7 +14,7 @@ from django.utils import timezone
 from catalogo.models import Atributo, Categoria, ImagenProducto, Producto, ValorAtributo
 
 from . import catalogo_pdf, servicios
-from .models import Cotizacion, MovimientoStock, ReglaDescuento, Stock, Ubicacion, Venta
+from .models import Cotizacion, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta
 from .servicios import ErrorNegocio
 
 User = get_user_model()
@@ -505,7 +505,7 @@ class AccesoPublicoTests(Base):
 class UsuariosTests(Base):
     def test_crear_usuario_con_clave_corta_y_nombre_libre(self):
         self.client.login(username="admin", password="x")
-        self.client.post(reverse("panel:usuarios"), {"username": "María José 2", "password": "1"})
+        self.client.post(reverse("panel:usuarios"), {"username": "María José 2", "password": "1", "ubicaciones": [self.casa.pk]})
         u = User.objects.get(username="María José 2")
         self.assertFalse(u.is_staff)
         self.assertTrue(self.client.login(username="María José 2", password="1"))
@@ -513,7 +513,7 @@ class UsuariosTests(Base):
     def test_clave_larguisima(self):
         self.client.login(username="admin", password="x")
         clave = "ñ" * 500
-        self.client.post(reverse("panel:usuarios"), {"username": "largo", "password": clave})
+        self.client.post(reverse("panel:usuarios"), {"username": "largo", "password": clave, "ubicaciones": [self.casa.pk]})
         self.assertTrue(self.client.login(username="largo", password=clave))
 
     def test_no_duplicados(self):
@@ -1152,3 +1152,381 @@ class CatalogoPdfTests(Base):
             for clave, _ in catalogo_pdf.opciones():
                 self.assertContains(r, f'value="{clave}"')
             self.assertContains(r, 'value="categoria"')  # ordenar agrupando por categoría
+
+
+class UbicacionesDelVendedorTests(Base):
+    """Cada vendedor tiene sus ubicaciones: vende desde ellas y ve las demás solo como referencia."""
+
+    def setUp(self):
+        super().setUp()
+        servicios.registrar_ingreso(self.p1, self.casa, 7, self.admin)
+        servicios.registrar_ingreso(self.p1, self.local, 4, self.admin)
+        PerfilVendedor.objects.create(usuario=self.ana).ubicaciones.set([self.casa])
+
+    def entrar(self, usuario):
+        self.client.force_login(usuario)
+
+    def test_crear_usuario_exige_ubicacion(self):
+        self.entrar(self.admin)
+        self.client.post(reverse("panel:usuarios"), {"username": "pepe", "password": "1"})
+        self.assertFalse(User.objects.filter(username="pepe").exists())
+        self.client.post(reverse("panel:usuarios"), {"username": "pepe", "password": "1",
+                                                      "ubicaciones": [self.local.pk, self.casa.pk]})
+        pepe = User.objects.get(username="pepe")
+        self.assertEqual(set(pepe.perfil_vendedor.ubicaciones.all()), {self.local, self.casa})
+
+    def test_admin_cambia_ubicaciones_de_un_usuario(self):
+        self.entrar(self.admin)
+        self.client.post(reverse("panel:usuario_ubicaciones", args=[self.ana.pk]), {"ubicaciones": [self.local.pk]})
+        self.assertEqual(list(self.ana.perfil_vendedor.ubicaciones.all()), [self.local])
+        self.client.post(reverse("panel:usuario_ubicaciones", args=[self.ana.pk]), {})  # sin elegir: no cambia
+        self.assertEqual(list(self.ana.perfil_vendedor.ubicaciones.all()), [self.local])
+
+    def test_vendedor_no_puede_cambiar_ubicaciones(self):
+        self.entrar(self.ana)
+        r = self.client.post(reverse("panel:usuario_ubicaciones", args=[self.ana.pk]), {"ubicaciones": [self.local.pk]})
+        self.assertEqual(r.status_code, 403)
+
+    def test_stock_muestra_primero_lo_propio_y_las_otras_como_referencia(self):
+        self.entrar(self.ana)
+        r = self.client.get(reverse("panel:stock"))
+        fila = next(f for f in r.context["filas"] if f["producto"] == self.p1)
+        self.assertEqual(fila["total"], 7)        # solo Casa
+        self.assertEqual(fila["total_otras"], 4)  # Local, referencia
+        self.assertEqual([l["propia"] for l in fila["lugares"]], [True, False])
+        self.assertContains(r, 'otra">Local <b>4</b>')
+        self.assertContains(r, 'data-otras="4"')
+
+    def test_producto_sin_stock_aqui_pero_con_en_otra_ubicacion(self):
+        self.entrar(self.ana)
+        r = self.client.get(reverse("panel:stock"))
+        self.assertNotContains(r, "Agotado</span>\n  </span>")  # p1 tiene en Casa
+        PerfilVendedor.objects.filter(usuario=self.ana).first().ubicaciones.set([self.local])
+        servicios.ajustar(self.p1, self.local, 0, self.admin)
+        r = self.client.get(reverse("panel:stock"))
+        self.assertContains(r, "Sin stock aquí")
+
+    def test_detalle_de_producto_separa_propias_y_otras(self):
+        self.entrar(self.ana)
+        r = self.client.get(reverse("panel:stock_producto", args=[self.p1.pk]))
+        self.assertEqual(r.context["total"], 7)
+        self.assertEqual(r.context["total_otras"], 4)
+        self.assertContains(r, "En otras ubicaciones")
+
+    def test_admin_y_usuario_sin_asignar_ven_todo_como_propio(self):
+        for u in (self.admin, self.luis):  # luis no tiene perfil
+            self.entrar(u)
+            r = self.client.get(reverse("panel:stock"))
+            fila = next(f for f in r.context["filas"] if f["producto"] == self.p1)
+            self.assertEqual((fila["total"], fila["total_otras"]), (11, 0))
+            self.assertNotContains(r, "solo como referencia")
+
+    def test_formulario_de_venta_marca_las_ubicaciones_propias(self):
+        self.entrar(self.ana)
+        r = self.client.get(reverse("panel:venta_nueva"))
+        marcas = {u["nombre"]: u["propia"] for u in r.context["ubicaciones_json"]}
+        self.assertEqual(marcas, {"Casa": True, "Local": False})
+        p1 = next(p for p in r.context["productos_json"] if p["id"] == self.p1.pk)
+        self.assertEqual((p1["total"], p1["otras"]), (7, 4))
+
+    def test_vender_desde_ubicacion_propia_funciona(self):
+        self.entrar(self.ana)
+        r = self.client.post(reverse("panel:venta_nueva"), {
+            "producto": [self.p1.pk], "ubicacion": [self.casa.pk], "cantidad": ["2"], "precio": ["10"]})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.stock(self.p1, self.casa), 5)
+
+    def test_vender_desde_ubicacion_ajena_se_rechaza_en_el_servidor(self):
+        self.entrar(self.ana)
+        r = self.client.post(reverse("panel:venta_nueva"), {
+            "producto": [self.p1.pk], "ubicacion": [self.local.pk], "cantidad": ["1"], "precio": ["10"]})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "no puedes vender desde Local")
+        self.assertEqual(self.stock(self.p1, self.local), 4)
+        self.assertEqual(Venta.objects.count(), 0)
+
+    def test_vender_sin_descontar_sigue_permitido(self):
+        self.entrar(self.ana)
+        r = self.client.post(reverse("panel:venta_nueva"), {
+            "producto": [self.p1.pk], "ubicacion": [""], "cantidad": ["1"], "precio": ["10"]})
+        self.assertEqual(r.status_code, 302)
+
+    def test_admin_puede_vender_desde_cualquier_ubicacion(self):
+        self.entrar(self.admin)
+        r = self.client.post(reverse("panel:venta_nueva"), {
+            "producto": [self.p1.pk], "ubicacion": [self.local.pk], "cantidad": ["1"], "precio": ["10"]})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.stock(self.p1, self.local), 3)
+
+
+class CargaMasivaTests(Base):
+    def post(self, datos, **extra):
+        self.client.force_login(self.admin)
+        return self.client.post(reverse("panel:stock_carga"), {**datos, **extra})
+
+    def test_solo_admin(self):
+        self.client.force_login(self.ana)
+        self.assertEqual(self.client.get(reverse("panel:stock_carga")).status_code, 403)
+        self.assertEqual(self.client.post(reverse("panel:stock_carga"), {}).status_code, 403)
+
+    def test_la_tabla_trae_todos_los_productos_y_ubicaciones(self):
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:stock_carga"))
+        self.assertEqual(r.status_code, 200)
+        for p in (self.p1, self.p2):
+            for u in (self.casa, self.local):
+                self.assertContains(r, f'name="c_{p.pk}_{u.pk}"')
+
+    def test_sumar_varios_productos_y_ubicaciones_de_una_vez(self):
+        servicios.registrar_ingreso(self.p1, self.casa, 2, self.admin)
+        r = self.post({"modo": "sumar", "nota": "lote 1",
+                       f"c_{self.p1.pk}_{self.casa.pk}": "5", f"c_{self.p1.pk}_{self.local.pk}": "3",
+                       f"c_{self.p2.pk}_{self.casa.pk}": "10", f"c_{self.p2.pk}_{self.local.pk}": ""})
+        self.assertRedirects(r, reverse("panel:stock"))
+        self.assertEqual(self.stock(self.p1, self.casa), 7)
+        self.assertEqual(self.stock(self.p1, self.local), 3)
+        self.assertEqual(self.stock(self.p2, self.casa), 10)
+        self.assertEqual(self.stock(self.p2, self.local), 0)
+        m = MovimientoStock.objects.filter(producto=self.p2).get()
+        self.assertEqual((m.tipo, m.usuario), (MovimientoStock.INICIAL, self.admin))
+        self.assertIn("lote 1", m.nota)
+        self.assertEqual(MovimientoStock.objects.filter(producto=self.p1, tipo=MovimientoStock.INGRESO).count(), 1)
+
+    def test_sumar_compensa_stock_negativo(self):
+        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 3)])
+        self.assertEqual(self.stock(self.p1, self.casa), -3)
+        self.post({"modo": "sumar", f"c_{self.p1.pk}_{self.casa.pk}": "10"})
+        self.assertEqual(self.stock(self.p1, self.casa), 7)
+
+    def test_fijar_cantidad_real(self):
+        servicios.registrar_ingreso(self.p1, self.casa, 8, self.admin)
+        servicios.registrar_ingreso(self.p2, self.casa, 4, self.admin)
+        r = self.post({"modo": "fijar", f"c_{self.p1.pk}_{self.casa.pk}": "5",
+                       f"c_{self.p2.pk}_{self.casa.pk}": "4", f"c_{self.p2.pk}_{self.local.pk}": "0"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.stock(self.p1, self.casa), 5)
+        self.assertEqual(self.stock(self.p2, self.casa), 4)  # misma cantidad: sin cambio, sin error
+        self.assertEqual(MovimientoStock.objects.filter(producto=self.p2, tipo=MovimientoStock.AJUSTE).count(), 0)
+
+    def test_un_dato_invalido_no_guarda_nada(self):
+        r = self.post({"modo": "sumar", f"c_{self.p1.pk}_{self.casa.pk}": "5", f"c_{self.p2.pk}_{self.casa.pk}": "abc"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "No se guardó nada")
+        self.assertContains(r, 'value="5"')  # conserva lo escrito
+        self.assertEqual(self.stock(self.p1, self.casa), 0)
+
+    def test_sumar_no_acepta_cero_ni_negativos(self):
+        for malo in ("0", "-2"):
+            r = self.post({"modo": "sumar", f"c_{self.p1.pk}_{self.casa.pk}": malo})
+            self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.stock(self.p1, self.casa), 0)
+
+    def test_sin_escribir_nada_avisa(self):
+        r = self.post({"modo": "sumar"})
+        self.assertContains(r, "No escribiste ninguna cantidad")
+
+    def test_ignora_claves_falsas(self):
+        r = self.post({"modo": "sumar", "c_999_999": "5", "c_x_y": "2", f"c_{self.p1.pk}_{self.casa.pk}": "1"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.stock(self.p1, self.casa), 1)
+
+    def test_boton_de_carga_solo_para_admin(self):
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(reverse("panel:stock")), reverse("panel:stock_carga"))
+        self.client.force_login(self.ana)
+        self.assertNotContains(self.client.get(reverse("panel:stock")), reverse("panel:stock_carga"))
+
+
+class VistasPorUbicacionTests(Base):
+    def setUp(self):
+        super().setUp()
+        servicios.registrar_ingreso(self.p1, self.casa, 7, self.admin)
+        servicios.registrar_ingreso(self.p1, self.local, 2, self.admin)
+        servicios.registrar_ingreso(self.p2, self.local, 5, self.admin)
+        PerfilVendedor.objects.create(usuario=self.ana).ubicaciones.set([self.casa])
+        self.client.force_login(self.ana)
+
+    def test_resumen_por_ubicacion(self):
+        r = self.client.get(reverse("panel:stock"))
+        res = {x["ubicacion"].nombre: x for x in r.context["resumen_ub"]}
+        self.assertEqual((res["Casa"]["unidades"], res["Casa"]["productos"], res["Casa"]["propia"]), (7, 1, True))
+        self.assertEqual((res["Local"]["unidades"], res["Local"]["productos"], res["Local"]["propia"]), (7, 2, False))
+        self.assertContains(r, "data-r-lugar")
+
+    def test_stock_bajo_es_exactamente_una_unidad(self):
+        js = open("static/js/panel_vista.js", encoding="utf-8").read()
+        self.assertIn("bajo: (t, o) => t === 1,", js)
+        self.assertContains(self.client.get(reverse("panel:stock")), "Stock bajo (queda 1 unidad)")
+
+    def test_hay_filtro_de_estado_y_vista_tabla(self):
+        r = self.client.get(reverse("panel:stock"))
+        self.assertContains(r, "data-f-estado")
+        self.assertContains(r, "Sin stock aquí, pero hay en otra ubicación")
+        self.assertContains(r, 'data-vista="tabla"')
+        self.assertContains(r, "data-tabla-contenedor")
+        self.assertContains(r, f'data-id="{self.p2.pk}"')
+
+    def test_tarjetas_y_filas_traen_datos_para_filtrar_por_estado(self):
+        r = self.client.get(reverse("panel:stock"))
+        # Cubo: nada en Casa, 5 en Local → total 0, otras 5 (aparece en tarjeta y en fila de tabla)
+        self.assertContains(r, f'data-id="{self.p2.pk}" data-nombre="Cubo"', count=2)
+        self.assertContains(r, 'data-total="0" data-otras="5" data-neg="0"', count=2)
+
+    def test_vender_y_cotizar_tambien_tienen_filtro_de_estado_pero_no_tabla(self):
+        for url in ("panel:venta_nueva", "panel:cotizacion_nueva"):
+            r = self.client.get(reverse(url))
+            self.assertContains(r, "data-f-estado")
+            self.assertNotContains(r, 'data-vista="tabla"')
+
+    def test_ventas_filtra_y_resume_por_ubicacion(self):
+        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 2)])
+        self.client.force_login(self.admin)
+        servicios.registrar_venta(self.admin, [self.item(self.p2, self.local, 1), self.item(self.p1, None, 1)])
+        r = self.client.get(reverse("panel:ventas"))
+        self.assertEqual(len(r.context["ventas"]), 2)
+        nombres = {x["nombre"] for x in r.context["por_ubicacion"]}
+        self.assertEqual(nombres, {"Casa", "Local", "Sin descontar de ningún lugar"})
+        self.assertEqual(r.context["mas_vendidos"][0]["producto__nombre"], "Pop it")
+        r = self.client.get(reverse("panel:ventas"), {"ubicacion": self.local.pk})
+        self.assertEqual(len(r.context["ventas"]), 1)
+        self.assertEqual(r.context["unidades"], 1)
+        r = self.client.get(reverse("panel:ventas"), {"ubicacion": "ninguna"})
+        self.assertEqual(len(r.context["ventas"]), 1)
+        r = self.client.get(reverse("panel:ventas"), {"ubicacion": "basura"})
+        self.assertEqual(r.status_code, 200)
+
+    def test_el_vendedor_solo_resume_sus_ventas(self):
+        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 2)])
+        servicios.registrar_venta(self.admin, [self.item(self.p2, self.local, 1)])
+        r = self.client.get(reverse("panel:ventas"))
+        self.assertEqual([x["nombre"] for x in r.context["por_ubicacion"]], ["Casa"])
+
+
+class MontoPorUbicacionTests(Base):
+    """El monto por ubicación es neto: reparte los descuentos de cada venta y SIEMPRE cuadra con el total."""
+
+    def test_repartir_total_suma_exacto(self):
+        for pesos, total in [([30, 30, 30], 100), ([10, 20], 25), ([1, 1, 1, 1, 1, 1, 1], 10), ([5], 5), ([7, 13, 29], 1)]:
+            r = servicios.repartir_total(pesos, total)
+            self.assertEqual(sum(r), total, (pesos, total))
+            self.assertTrue(all(x == x.to_integral_value() and x >= 0 for x in r))
+
+    def test_repartir_total_casos_borde(self):
+        self.assertEqual(servicios.repartir_total([], 10), [])
+        self.assertEqual([int(x) for x in servicios.repartir_total([0, 0], 0)], [0, 0])
+        self.assertEqual([int(x) for x in servicios.repartir_total([10, 10], 20)], [10, 10])
+
+    def test_descuento_se_reparte_proporcionalmente(self):
+        v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 5), self.item(self.p2, self.local, 5)],
+                                      aplicar_reglas=True, descuento_extra=D("10"))
+        # 5×10 + 5×20 = 150; 10 unidades → 10% = 15; extra 10 → total 125
+        self.assertEqual(v.total, D("125"))
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:ventas"))
+        montos = {x["nombre"]: x["monto"] for x in r.context["por_ubicacion"]}
+        self.assertEqual(montos, {"Casa": D("42"), "Local": D("83")})  # 125 × 50/150 = 41,67→42 ; 125 × 100/150 = 83,33→83
+        self.assertEqual(sum(montos.values()), r.context["resumen"]["total"])
+
+    def test_la_suma_por_ubicacion_siempre_cuadra_con_el_total(self):
+        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 3, D("7")), self.item(self.p2, self.local, 4, D("9")),
+                                             self.item(self.p1, None, 1, D("7"))], descuento_extra=D("5"))
+        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 6), self.item(self.p2, self.casa, 5)])
+        anulada = servicios.registrar_venta(self.ana, [self.item(self.p1, self.local, 2)])
+        servicios.anular_venta(anulada, self.admin)
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:ventas"))
+        self.assertEqual(sum(x["monto"] for x in r.context["por_ubicacion"]), r.context["resumen"]["total"])
+
+    def test_con_filtro_de_ubicacion_solo_esa_fila(self):
+        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 2), self.item(self.p2, self.local, 2)])
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:ventas"), {"ubicacion": self.local.pk})
+        self.assertEqual([x["nombre"] for x in r.context["por_ubicacion"]], ["Local"])
+
+
+class DescuentoPorProductoTests(Base):
+    """El descuento se aplica producto por producto (cada línea en enteros) y el total es la suma de las líneas."""
+
+    def lineas(self):
+        # 3×7=21, 4×9=36, 3×5=15 → 10 unidades → regla del 10 %
+        extra = [Producto.objects.create(nombre=n, precio=D(pr)) for n, pr in (("A", 7), ("B", 9), ("C", 5))]
+        return [self.item(extra[0], self.casa, 3), self.item(extra[1], self.local, 4), self.item(extra[2], None, 3)]
+
+    def test_cada_producto_lleva_su_descuento_redondeado(self):
+        t = servicios.calcular_totales(self.lineas())
+        # 10 % de 21 = 2,1→2 ; de 36 = 3,6→4 ; de 15 = 1,5→2   (en vez de 10 % de 72 = 7,2→7)
+        self.assertEqual([l["descuento"] for l in t["lineas"]], [D(2), D(4), D(2)])
+        self.assertEqual(t["descuento_reglas"], D(8))
+        self.assertEqual(t["total"], D(64))
+        self.assertEqual(sum(l["neto"] for l in t["lineas"]), t["total"])
+        self.assertEqual(t["aplicadas"][0]["monto"], D(8))  # el detalle de la regla coincide con la suma por línea
+
+    def test_la_venta_guarda_el_descuento_de_cada_linea(self):
+        v = servicios.registrar_venta(self.ana, self.lineas())
+        self.assertEqual([i.descuento for i in v.items.order_by("id")], [D(2), D(4), D(2)])
+        self.assertEqual(sum(i.neto for i in v.items.all()), v.total)
+        self.assertEqual(v.total, D(64))
+
+    def test_descuento_extra_se_reparte_entre_lineas_y_todo_sigue_en_enteros(self):
+        t = servicios.calcular_totales(self.lineas(), descuento_extra=D("10"))
+        self.assertEqual(t["total"], D(54))
+        self.assertEqual(sum(l["descuento_extra"] for l in t["lineas"]), D(10))
+        for l in t["lineas"]:
+            for k in ("bruto", "descuento_reglas", "descuento_extra", "descuento", "neto"):
+                self.assertEqual(l[k], l[k].to_integral_value(), k)
+            self.assertTrue(0 <= l["neto"] <= l["bruto"])
+        self.assertEqual(sum(l["neto"] for l in t["lineas"]), t["total"])
+
+    def test_promo_por_categoria_solo_toca_sus_lineas(self):
+        ReglaDescuento.objects.create(nombre="Táctil 20", minimo_unidades=2, porcentaje=D("20"),
+                                      alcance=ReglaDescuento.CATEGORIA, categoria=self.cat, acumulable=True)
+        t = servicios.calcular_totales([self.item(self.p1, None, 2), self.item(self.p2, None, 1)])
+        self.assertEqual([l["descuento"] for l in t["lineas"]], [D(4), D(0)])  # 20 % de 20 = 4; el Cubo no tiene categoría
+        self.assertEqual(t["total"], D(36))
+
+    def test_nunca_se_descuenta_mas_de_lo_que_vale_un_producto(self):
+        ReglaDescuento.objects.create(nombre="Loca", minimo_unidades=1, porcentaje=D("95"), acumulable=True)
+        t = servicios.calcular_totales([self.item(self.p1, None, 5)])  # 5 % + 95 % acumulables = 100 %
+        self.assertEqual(t["lineas"][0]["neto"], D(0))
+        self.assertEqual(t["total"], D(0))
+
+    def test_siempre_cuadra_con_muchas_combinaciones(self):
+        import itertools
+        productos = [Producto.objects.create(nombre=f"P{i}", precio=D(p)) for i, p in enumerate((3, 7, 11, 13, 17))]
+        for cants, extra in itertools.product([(1, 1, 1, 1, 1), (2, 3, 1, 4, 5), (7, 0, 2, 9, 1)], (0, 1, 7, 33, 999)):
+            lineas = [self.item(p, None, c) for p, c in zip(productos, cants) if c]
+            t = servicios.calcular_totales(lineas, descuento_extra=D(extra))
+            self.assertEqual(sum(l["neto"] for l in t["lineas"]), t["total"], (cants, extra))
+            self.assertEqual(t["subtotal"] - t["descuento_reglas"] - t["descuento_extra"], t["total"])
+            self.assertTrue(all(0 <= l["neto"] <= l["bruto"] for l in t["lineas"]), (cants, extra))
+
+    def test_monto_por_ubicacion_suma_exacto_el_total(self):
+        servicios.registrar_venta(self.ana, self.lineas(), descuento_extra=D("5"))
+        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 6), self.item(self.p2, self.casa, 5)])
+        v = servicios.registrar_venta(self.ana, [self.item(self.p1, self.local, 2)])
+        servicios.anular_venta(v, self.admin)  # no cuenta
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:ventas"))
+        self.assertEqual(sum(x["monto"] for x in r.context["por_ubicacion"]), r.context["resumen"]["total"])
+
+    def test_detalle_de_venta_muestra_el_neto_de_cada_linea(self):
+        v = servicios.registrar_venta(self.ana, self.lineas())
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:venta_detalle", args=[v.pk]))
+        self.assertContains(r, "(− 4 desc.)")
+        self.assertContains(r, "Bs. 32")  # 36 − 4
+
+    def test_ventas_antiguas_se_reparten_en_la_migracion(self):
+        import importlib
+        from django.apps import apps as registro
+        from .models import VentaItem
+        mig = importlib.import_module("inventario.migrations.0005_descuento_por_linea")
+        v = Venta.objects.create(vendedor=self.ana, subtotal=D(150), descuento_reglas=D(15), descuento_extra=D(10), total=D(125))
+        VentaItem.objects.create(venta=v, producto=self.p1, cantidad=5, precio_lista=D(10), precio_unitario=D(10))
+        VentaItem.objects.create(venta=v, producto=self.p2, cantidad=5, precio_lista=D(20), precio_unitario=D(20))
+        sin_descuento = Venta.objects.create(vendedor=self.ana, subtotal=D(10), total=D(10))
+        VentaItem.objects.create(venta=sin_descuento, producto=self.p1, cantidad=1, precio_lista=D(10), precio_unitario=D(10))
+        mig.repartir_descuentos_antiguos(registro, None)
+        self.assertEqual([i.descuento for i in v.items.order_by("id")], [D(8), D(17)])  # 25 en total
+        self.assertEqual(sum(i.neto for i in v.items.all()), v.total)
+        self.assertEqual(sin_descuento.items.get().descuento, D(0))
