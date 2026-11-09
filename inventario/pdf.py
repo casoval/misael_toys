@@ -138,6 +138,134 @@ def miniaturas_de(productos):
     return {pk: foto for pk, foto in zip(pendientes, resultados) if foto}
 
 
+# --------------------------------------------------------------------------
+# Piezas a medida (no están en el catálogo): fotos más grandes que las del catálogo
+# --------------------------------------------------------------------------
+FOTO_PIEZA_MM = 32        # caja de la foto principal de cada pieza
+FOTO_EXTRA_MM = 24        # caja de las demás fotos (van en una fila debajo)
+FOTO_PIEZA_PX = 520       # lado más largo con el que se incrusta (nítida pero liviana)
+
+
+def _url_foto_pieza(url):
+    """En Cloudinary se pide ya reducida (sin recortar) y en JPG: el PDF no lee WebP."""
+    return _url_cloudinary_transformada(url, f"w_{FOTO_PIEZA_PX},h_{FOTO_PIEZA_PX},c_limit,q_auto,f_jpg")
+
+
+def _origen_foto_pieza(foto):
+    """De dónde sale una foto de pieza: ('url', ...) en la nube, ('bytes', ...) si es local, o None."""
+    campo = foto.imagen
+    try:
+        url = campo.url
+        if url.startswith("http"):
+            return ("url", _url_foto_pieza(url))
+        with campo.open("rb") as archivo:
+            return ("bytes", archivo.read())
+    except Exception:
+        log.warning("No se pudo leer la foto %s de una pieza a medida", foto.pk, exc_info=True)
+        return None
+
+
+def _a_foto_pieza(datos):
+    """JPEG liviano que CONSERVA la proporción (no recorta: el cliente debe ver la pieza completa),
+    con esquinas suavemente redondeadas."""
+    img = ImageOps.exif_transpose(PILImage.open(BytesIO(datos))).convert("RGB")
+    img.thumbnail((FOTO_PIEZA_PX, FOTO_PIEZA_PX), PILImage.LANCZOS)
+    ancho, alto = img.size
+    mascara = PILImage.new("L", (ancho, alto), 0)
+    ImageDraw.Draw(mascara).rounded_rectangle((0, 0, ancho - 1, alto - 1), radius=max(4, min(ancho, alto) // 14), fill=255)
+    fondo = PILImage.new("RGB", (ancho, alto), "white")
+    fondo.paste(img, (0, 0), mascara)
+    salida = BytesIO()
+    fondo.save(salida, "JPEG", quality=82, optimize=True)
+    return salida.getvalue()
+
+
+def _foto_pieza_lista(origen):
+    try:
+        datos = _descargar(origen[1]) if origen[0] == "url" else origen[1]
+        return _a_foto_pieza(datos)
+    except Exception:
+        log.warning("No se pudo preparar una foto de pieza para el PDF", exc_info=True)
+        return None  # sin esa foto no se rompe nada
+
+
+def fotos_de_piezas(piezas):
+    """{id de foto: bytes JPEG} de todas las fotos de las piezas. Descargas en paralelo; si una
+    falla, esa foto simplemente no sale."""
+    origenes = {}
+    for pieza in piezas:
+        for foto in pieza.fotos.all():
+            origenes[foto.pk] = _origen_foto_pieza(foto)
+    pendientes = {pk: o for pk, o in origenes.items() if o}
+    if not pendientes:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(8, len(pendientes))) as pool:
+        resultados = list(pool.map(_foto_pieza_lista, pendientes.values()))
+    return {pk: foto for pk, foto in zip(pendientes, resultados) if foto}
+
+
+def _imagen_en_caja(datos, caja_mm):
+    """Imagen que cabe en un cuadrado de `caja_mm`, sin deformarse."""
+    ancho, alto = PILImage.open(BytesIO(datos)).size
+    escala = min(caja_mm * mm / ancho, caja_mm * mm / alto)
+    return Image(BytesIO(datos), width=ancho * escala, height=alto * escala)
+
+
+def _tabla_piezas(piezas, fotos, st, inicio=1):
+    """Tabla de las piezas a medida: foto principal, nombre, descripción y medidas (si las hay),
+    cantidad y precio. Las demás fotos van en una fila debajo de la pieza. NUNCA muestra costos."""
+    def fotos_de(pieza):
+        return [fotos[f.pk] for f in pieza.fotos.all() if f.pk in fotos]
+
+    con_fotos = any(fotos_de(pz) for pz in piezas)
+    estilo_nombre = ParagraphStyle("pn", parent=st["normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=13)
+    estilo_chico = ParagraphStyle("pc", parent=st["chico"], textColor=SOFT, spaceBefore=2)
+
+    cabecera = ["N°"] + ([""] if con_fotos else []) + ["Descripción", "Cant.", "P. unitario", "Subtotal"]
+    anchos = [9 * mm] + ([36 * mm] if con_fotos else []) + [(58 if con_fotos else 94) * mm, 14 * mm, 26 * mm, 26 * mm]
+    ultima = len(cabecera) - 1
+    filas, estilos, grupos = [cabecera], [], []
+    for n, pz in enumerate(piezas, start=inicio):
+        imgs = fotos_de(pz)
+        texto = [Paragraph(_esc(pz.nombre), estilo_nombre),
+                 Paragraph(_esc(pz.descripcion).replace("\n", "<br/>"), st["normal"])]
+        if pz.medidas:
+            texto.append(Paragraph(f"<b>Medidas:</b> {_esc(pz.medidas)}", estilo_chico))
+        fila = [str(n)]
+        if con_fotos:
+            fila.append(_imagen_en_caja(imgs[0], FOTO_PIEZA_MM) if imgs else "")
+        fila += [texto, str(pz.cantidad), _bs(pz.precio_unitario), _bs(pz.subtotal)]
+        filas.append(fila)
+        r = len(filas) - 1
+        estilos.append(("TOPPADDING", (0, r), (-1, r), 6))
+        fin = r
+        if len(imgs) > 1:  # las demás fotos, en una fila debajo (ocupa todo el ancho menos la columna N°)
+            miniaturas = [_imagen_en_caja(d, FOTO_EXTRA_MM) for d in imgs[1:]]
+            tira = Table([miniaturas], colWidths=[(FOTO_EXTRA_MM + 3) * mm] * len(miniaturas))
+            tira.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
+                                      ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                                      ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+            filas.append([""] + [tira] + [""] * (ultima - 1))
+            fin = r + 1
+            estilos += [("SPAN", (1, fin), (ultima, fin)), ("TOPPADDING", (0, fin), (-1, fin), 2),
+                        ("NOSPLIT", (0, r), (-1, fin))]
+        estilos.append(("LINEBELOW", (0, fin), (-1, fin), 0.4, CLAY))
+        estilos.append(("BOTTOMPADDING", (0, fin), (-1, fin), 6))
+        grupos.append((r, fin))
+
+    t = Table(filas, colWidths=anchos, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), TEAL), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, 0), 5), ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"), ("VALIGN", (0, 1), (-1, -1), "TOP"),
+        ("ALIGN", (ultima - 2, 0), (ultima, -1), "RIGHT"), ("ALIGN", (ultima - 2, 0), (ultima - 2, -1), "CENTER"),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (1, 0), "LEFT"),
+        *estilos,
+    ]))
+    return t
+
+
 def _esc(texto):
     return (texto or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -314,35 +442,43 @@ def generar_pdf_cotizacion(cot):
     # Foto pequeña de cada producto como referencia para el cliente (11 mm: casi no ocupa espacio).
     # Si NINGÚN producto tiene foto, la columna ni se muestra; si algunos no tienen, llevan un cuadrito claro.
     items = list(cot.items.select_related("producto").prefetch_related("producto__imagenes"))
-    fotos = miniaturas_de([it.producto for it in items])
-    con_fotos = bool(fotos)
-    marcador = _marcador_sin_foto() if con_fotos else None
-    # Primera columna: N° de ítem (1, 2, 3…), para ubicar rápido cada producto.
-    filas = [["N°"] + ([""] if con_fotos else []) + ["Producto", "Cant.", "P. unitario", "Subtotal"]]
-    for n, it in enumerate(items, start=1):
-        fila = [str(n)]
+    if items:
+        fotos = miniaturas_de([it.producto for it in items])
+        con_fotos = bool(fotos)
+        marcador = _marcador_sin_foto() if con_fotos else None
+        # Primera columna: N° de ítem (1, 2, 3…), para ubicar rápido cada producto.
+        filas = [["N°"] + [""] * con_fotos + ["Producto", "Cant.", "P. unitario", "Subtotal"]]
+        for n, it in enumerate(items, start=1):
+            fila = [str(n)]
+            if con_fotos:
+                fila.append(Image(BytesIO(fotos.get(it.producto_id) or marcador), width=FOTO_MM * mm, height=FOTO_MM * mm))
+            fila += [Paragraph(_nombre_con_codigo(it.producto), st["normal"]), str(it.cantidad),
+                     _bs(it.precio_unitario), _bs(it.subtotal)]
+            filas.append(fila)
         if con_fotos:
-            fila.append(Image(BytesIO(fotos.get(it.producto_id) or marcador), width=FOTO_MM * mm, height=FOTO_MM * mm))
-        fila += [Paragraph(_nombre_con_codigo(it.producto), st["normal"]), str(it.cantidad),
-                 _bs(it.precio_unitario), _bs(it.subtotal)]
-        filas.append(fila)
-    if con_fotos:
-        tabla = _tabla_items(filas, [9 * mm, 15 * mm, 62 * mm, 16 * mm, 34 * mm, 33 * mm])
-        tabla.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (1, -1), "CENTER"), ("ALIGN", (2, 0), (2, -1), "LEFT"),
-            ("TOPPADDING", (0, 1), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
-        ]))
-    else:
-        tabla = _tabla_items(filas, [9 * mm, 76 * mm, 18 * mm, 33 * mm, 33 * mm])
-        tabla.setStyle(TableStyle([("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (1, -1), "LEFT")]))
-    el += [tabla, Spacer(1, 4 * mm),
-           _tabla_totales(cot.subtotal, cot.detalle_reglas, cot.descuento_extra, cot.total, st)]
+            tabla = _tabla_items(filas, [9 * mm, 15 * mm, 62 * mm, 16 * mm, 34 * mm, 33 * mm])
+            tabla.setStyle(TableStyle([
+                ("ALIGN", (0, 0), (1, -1), "CENTER"), ("ALIGN", (2, 0), (2, -1), "LEFT"),
+                ("TOPPADDING", (0, 1), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
+            ]))
+        else:
+            tabla = _tabla_items(filas, [9 * mm, 76 * mm, 18 * mm, 33 * mm, 33 * mm])
+            tabla.setStyle(TableStyle([("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (1, 0), (1, -1), "LEFT")]))
+        el += [tabla, Spacer(1, 4 * mm)]
+
+    # Piezas a medida (no están en el catálogo): nombre, descripción, medidas opcionales y fotos.
+    # Siguen la numeración de los productos y comparten los mismos totales.
+    piezas = list(cot.items_personalizados.prefetch_related("fotos"))
+    if piezas:
+        el += [_tabla_piezas(piezas, fotos_de_piezas(piezas), st, inicio=len(items) + 1), Spacer(1, 4 * mm)]
+    el.append(_tabla_totales(cot.subtotal, cot.detalle_reglas, cot.descuento_extra, cot.total, st))
 
     if cot.observaciones:
         el += [Spacer(1, 5 * mm), Paragraph("Observaciones", st["negrita"]),
                Paragraph(_esc(cot.observaciones).replace("\n", "<br/>"), st["normal"])]
 
-    notas = [f"Precios en bolivianos (Bs.). Cotización válida por {cot.validez_dias} días, sujeta a disponibilidad."]
+    disponibilidad = ", sujeta a disponibilidad" if items else ""  # lo hecho a medida no tiene "stock"
+    notas = [f"Precios en bolivianos (Bs.). Cotización válida por {cot.validez_dias} días{disponibilidad}."]
     if config.envios_nacionales and config.texto_envios:
         notas.append(_esc(config.texto_envios).rstrip(".") + (f". {_esc(config.detalle_envios).rstrip('.')}" if config.detalle_envios else "") + ".")
     # Las notas finales van juntas: nunca queda "¡Gracias!" solo en otra hoja

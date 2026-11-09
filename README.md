@@ -133,6 +133,24 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
 - **Cotizaciones**: eliges productos y cantidades, ves el total con las
   promociones aplicadas y descargas un **PDF** para el cliente (sin stock ni
   lugares). No descuenta stock.
+- **Cotización a medida** (pestaña «A medida», solo admin, `/panel/a-medida/`): para cotizar algo que **no está
+  en el catálogo** (un pedido especial, una idea que quizá nunca se venda). No crea un producto, no toca el stock
+  ni el sitio público. Cada pieza lleva:
+  - **Lo que ve el cliente en el PDF**: nombre, descripción, medidas (opcional) y **hasta 6 fotos** (la primera,
+    más grande; las demás en una fila debajo). Las fotos se reducen en el navegador antes de subir y otra vez en
+    el servidor (JPEG, máx. 1600 px, se corrige la orientación del celular).
+  - **Costo (solo para ti, nunca sale en el PDF)**: filamento (de tu lista de *Filamentos* o «Otro» escribiendo
+    su costo por kg), peso en gramos y tiempo de impresión (horas y minutos) **de una sola unidad**. Usa la misma
+    fórmula que los productos del catálogo (costo por hora de impresora + fallas + margen, de *Configuración del
+    sitio*) y muestra el desglose, el costo estimado y un **precio sugerido**. Tú escribes el **precio final**; si
+    lo dejas vacío se rellena con el sugerido, y se avisa si queda por debajo del costo. El costeo es opcional,
+    pero «todo o nada»: si escribes una parte, hay que completar las tres.
+  - Se pueden agregar varias piezas en una misma cotización. Las promociones por cantidad del catálogo **no** se
+    aplican (el precio de cada pieza ya es el final); sí el descuento adicional en Bs.
+  - La cotización usa la misma numeración, lista (con insignia «A medida»), búsqueda (por nombre o descripción de
+    la pieza) y PDF que las demás. El costeo guardado conserva el costo por kg de ese momento. En el detalle, solo
+    el admin ve el costeo y la ganancia. Modelos: `CotizacionItemPersonalizado` y `FotoItemPersonalizado`
+    (hacen falta `python manage.py migrate`). Las fotos van a Cloudinary si está configurado, o a `media/`.
 - **Ubicaciones por vendedor**: al crear un vendedor se eligen **una o varias ubicaciones** donde
   vende (obligatorio si existen ubicaciones activas); el admin puede cambiarlas después en
   `/panel/usuarios/`. El vendedor ve **su stock** (número grande de la tarjeta, ficha del producto y

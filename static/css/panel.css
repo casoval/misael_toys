@@ -386,3 +386,77 @@ body.panel { background: var(--bg); }
 .p-carga-guardar .p-btn:disabled { opacity: .45; cursor: not-allowed; }
 .p-resumenes { margin: .4rem 0; }
 kbd { background: #f0ece2; border: 1px solid #d8d1bf; border-radius: .25rem; padding: 0 .3rem; font-size: .8em; }
+
+/* ---------- Cotización a medida (piezas que no están en el catálogo) ---------- */
+.p-pieza { margin: 0 0 .6rem !important; padding: .6rem .8rem .8rem; }
+.p-pieza-cab { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .1rem; }
+.p-pieza-cab h2 { margin: 0; font-size: 1.02rem; color: var(--teal-dark); }
+.p-quitar-pieza { width: 2rem; flex: none; }
+.p-quitar-pieza[hidden] { display: none; }
+
+.p-bloque { border: 1px solid var(--clay); border-radius: .6rem; padding: .2rem .7rem .55rem; margin: .5rem 0 0; min-width: 0; }
+.p-bloque legend { padding: 0 .35rem; font-weight: 700; font-size: .86rem; color: var(--teal-dark); }
+.p-bloque legend small { font-weight: 500; color: var(--ink-soft); font-size: .74rem; }
+.p-bloque label small { font-weight: 500; }
+.p-costeo { background: #f6fbfa; border-color: #cfe7e3; }
+.p-bloque > .p-soft { margin: .25rem 0 0; }
+
+.p-tres { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .2rem .6rem; align-items: end; }
+.p-tiempo { display: flex; align-items: center; gap: .25rem; margin-top: .15rem; }
+.p-tiempo input { margin-top: 0 !important; text-align: center; }
+.p-tiempo i { font-style: normal; font-weight: 600; font-size: .8rem; color: var(--ink-soft); }
+.p-otro { margin-top: .2rem; }
+.p-otro[hidden] { display: none; }
+.p-usar-sug { align-self: end; margin: .4rem 0; padding: .45rem .6rem; font-size: .82rem; line-height: 1.2; }
+.p-usar-sug[hidden] { display: none; }
+
+/* Resultado del costo: desglose + costo estimado + precio sugerido */
+.p-calculo { margin-top: .4rem; font-size: .84rem; }
+.p-calculo:empty { display: none; }
+.p-calculo.pendiente { color: #9a5b00; }
+.p-calculo.listo { background: #fff; border: 1px solid #cfe7e3; border-radius: .5rem; padding: .4rem .6rem; }
+.p-calc-desglose { display: flex; flex-wrap: wrap; gap: .1rem .9rem; color: var(--ink-soft); font-size: .78rem; }
+.p-calc-desglose b { color: var(--ink); }
+.p-calc-fin { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .1rem .9rem; margin-top: .25rem; padding-top: .25rem; border-top: 1px dashed var(--clay); }
+.p-calc-fin b { font-size: 1.02rem; color: var(--teal-dark); }
+.p-calc-fin .sug b { color: #1f8a4c; }
+.p-calc-fin small { color: var(--ink-soft); font-size: .72rem; }
+.p-calc-nota { margin-top: .3rem; font-size: .76rem; color: #9a5b00; }
+
+.p-ganancia { margin: .25rem 0 0; font-size: .82rem; min-height: 1.1rem; }
+.p-ganancia.bien { color: #1f8a4c; font-weight: 600; }
+.p-ganancia.mal { color: #c0392b; font-weight: 700; }
+
+/* Fotos: botón, contador y vista previa con «✕» para quitar */
+.p-fotos { margin-top: .5rem; }
+.p-fotos-btn { margin: 0; cursor: pointer; padding: .4rem .8rem; font-size: .86rem; }
+.p-fotos-cuenta { margin-left: .5rem; }
+.p-fotos-prev { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .45rem; }
+.p-fotos-prev:empty { display: none; }
+.p-foto { position: relative; width: 5.2rem; height: 5.2rem; border-radius: .5rem; overflow: hidden; border: 2px solid var(--clay); background: #eee; }
+.p-foto.principal { border-color: var(--teal); }
+.p-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.p-foto-x { position: absolute; top: .15rem; right: .15rem; width: 1.5rem; height: 1.5rem; border: 0; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; font-size: .72rem; cursor: pointer; padding: 0; line-height: 1; }
+.p-foto-x:hover { background: #c0392b; }
+.p-foto-tag { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(11,92,83,.85); color: #fff; font-size: .62rem; font-weight: 700; text-align: center; padding: .1rem 0; text-transform: uppercase; letter-spacing: .04em; }
+
+/* Detalle de cotización: fotos de las piezas a medida */
+.p-pieza-det { display: flex; flex-wrap: wrap; gap: .6rem; padding: .6rem 0; border-bottom: 1px solid #f0ece2; }
+.p-pieza-det:last-child { border-bottom: 0; }
+.p-pieza-det .info { flex: 1 1 14rem; min-width: 0; }
+.p-pieza-det .info h3 { margin: 0 0 .15rem; font-size: 1rem; }
+.p-pieza-det .info p { margin: .15rem 0; font-size: .9rem; }
+.p-pieza-det .fotos { display: flex; flex-wrap: wrap; gap: .35rem; align-content: flex-start; }
+.p-pieza-det .fotos a { display: block; width: 5rem; height: 5rem; border-radius: .45rem; overflow: hidden; border: 1px solid var(--clay); }
+.p-pieza-det .fotos img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.p-pieza-det .precio { text-align: right; white-space: nowrap; font-size: .92rem; }
+.p-costeo-det { margin: .35rem 0 0; padding: .35rem .6rem; background: #f6fbfa; border: 1px solid #cfe7e3; border-radius: .5rem; font-size: .82rem; color: var(--ink-soft); }
+.p-costeo-det b { color: var(--ink); }
+.p-costeo-det .mal { color: #c0392b; font-weight: 700; }
+.p-tag-medida { background: #ffe9d6; color: #9a4a00; }
+
+@media (max-width: 759px) {
+  .p-tres { grid-template-columns: 1fr 1fr; }
+  .p-tres .p-usar-sug { grid-column: 1 / -1; }
+  .p-pieza-det .precio { text-align: left; flex: 1 1 100%; }
+}

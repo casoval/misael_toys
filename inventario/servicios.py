@@ -9,7 +9,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
-    Cotizacion, CotizacionItem, MovimientoStock, ReglaDescuento, Stock, Venta, VentaItem,
+    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, MovimientoStock,
+    ReglaDescuento, Stock, Venta, VentaItem,
 )
 
 ENTERO = Decimal("1")
@@ -318,4 +319,97 @@ def crear_cotizacion(creador, items, cliente="", observaciones="", validez_dias=
             cotizacion=cot, producto=it["producto"], cantidad=it["cantidad"],
             precio_unitario=_q(it["precio_unitario"]),
         )
+    return cot
+
+
+# --------------------------------------------------------------------------
+# Cotizaciones a medida (piezas que NO están en el catálogo)
+# --------------------------------------------------------------------------
+MAX_PIEZAS_A_MEDIDA = 20
+
+
+def costear_pieza(peso_gramos, horas, costo_por_kg):
+    """Costo estimado y precio sugerido de una pieza, con los parámetros del sitio (costo por hora de
+    impresora, % de fallas, % de margen). Es la MISMA fórmula que usan los productos del catálogo.
+    Devuelve el desglose en enteros (como todo el dinero del panel) más `costo_hora`."""
+    from catalogo.models import ConfiguracionSitio
+
+    config = ConfiguracionSitio.get()
+    d = config.desglose_costo(peso_gramos, horas, costo_por_kg)
+    return {
+        "material": _q(d["material"]), "maquina": _q(d["maquina"]), "fallas": _q(d["fallas"]),
+        "costo": _q(d["costo"]), "precio_sugerido": _q(d["precio_sugerido"]),
+        "costo_hora": config.costo_hora_impresora,
+        "tasa_fallas_pct": config.tasa_fallas_pct, "margen_pct": config.margen_ganancia_pct,
+        # Sin datos de la impresora el costo de máquina sale 0 y el sugerido solo cubre el material.
+        "config_incompleta": config.costo_hora_impresora <= 0,
+    }
+
+
+@transaction.atomic
+def crear_cotizacion_a_medida(creador, piezas, cliente="", observaciones="", validez_dias=7, descuento_extra=0):
+    """Crea una cotización cuyas piezas no están en el catálogo. No toca el stock ni los productos.
+
+    `piezas`: lista de dicts con: nombre, descripcion, medidas (opcional), cantidad, precio_unitario,
+    fotos (lista de archivos subidos, opcional) y costeo (None o dict con peso_gramos, horas,
+    costo_por_kg, filamento (objeto o None) y filamento_nombre). Las promociones por cantidad
+    del catálogo NO se aplican (el precio de cada pieza ya es el final); sí el descuento adicional."""
+    from .imagenes import preparar_foto  # import diferido: imagenes usa ErrorNegocio de este módulo
+
+    if not piezas:
+        raise ErrorNegocio("Agrega al menos una pieza.")
+    if len(piezas) > MAX_PIEZAS_A_MEDIDA:
+        raise ErrorNegocio(f"Máximo {MAX_PIEZAS_A_MEDIDA} piezas por cotización.")
+
+    # 1) Todo se valida y se prepara ANTES de escribir nada (si algo falla, no queda nada a medias).
+    listas = []
+    for n, pz in enumerate(piezas, start=1):
+        nombre = (pz.get("nombre") or "").strip()
+        if not nombre:
+            raise ErrorNegocio(f"Pieza {n}: escribe el nombre.")
+        descripcion = (pz.get("descripcion") or "").strip()
+        if not descripcion:
+            raise ErrorNegocio(f"Pieza {n} ({nombre}): escribe una descripción.")
+        if int(pz.get("cantidad") or 0) <= 0:
+            raise ErrorNegocio(f"Pieza {n} ({nombre}): la cantidad debe ser mayor que 0.")
+        precio = _q(pz.get("precio_unitario") or 0)
+        if precio <= 0:
+            raise ErrorNegocio(f"Pieza {n} ({nombre}): escribe el precio final (mayor que 0).")
+        archivos = list(pz.get("fotos") or [])
+        if len(archivos) > FotoItemPersonalizado.MAX_FOTOS:
+            raise ErrorNegocio(f"Pieza {n} ({nombre}): máximo {FotoItemPersonalizado.MAX_FOTOS} fotos.")
+        fotos = [preparar_foto(a) for a in archivos]
+
+        costeo = pz.get("costeo")
+        datos_costeo = {}
+        if costeo:
+            calc = costear_pieza(costeo["peso_gramos"], costeo["horas"], costeo["costo_por_kg"])
+            datos_costeo = {
+                "filamento": costeo.get("filamento"), "filamento_nombre": (costeo.get("filamento_nombre") or "")[:80],
+                "filamento_costo_kg": costeo["costo_por_kg"], "peso_gramos": costeo["peso_gramos"],
+                "horas_impresion": costeo["horas"], "costo_estimado": calc["costo"],
+                "precio_sugerido": calc["precio_sugerido"],
+            }
+        listas.append({
+            "nombre": nombre[:150], "descripcion": descripcion, "medidas": (pz.get("medidas") or "").strip()[:300],
+            "cantidad": int(pz["cantidad"]), "precio_unitario": precio, "fotos": fotos, **datos_costeo,
+        })
+
+    totales = calcular_totales(
+        [{"producto": None, "cantidad": l["cantidad"], "precio_unitario": l["precio_unitario"]} for l in listas],
+        aplicar_reglas=False, descuento_extra=descuento_extra,
+    )
+    cot = Cotizacion.objects.create(
+        creador=creador, cliente=cliente.strip(), observaciones=observaciones.strip(),
+        validez_dias=validez_dias, subtotal=totales["subtotal"], descuento_reglas=Decimal("0"),
+        detalle_reglas="", descuento_extra=totales["descuento_extra"], total=totales["total"],
+    )
+
+    # 2) Se guarda cada pieza con sus fotos.
+    for orden, datos in enumerate(listas):
+        fotos = datos.pop("fotos")
+        item = CotizacionItemPersonalizado.objects.create(cotizacion=cot, orden=orden, **datos)
+        for k, contenido in enumerate(fotos):
+            contenido.name = f"cot{cot.pk:05d}-p{orden + 1}-f{k + 1}.jpg"
+            FotoItemPersonalizado.objects.create(item=item, imagen=contenido, orden=k)
     return cot

@@ -26,6 +26,8 @@ urlpatterns = [
     path("ventas/<int:pk>/anular/", views.venta_anular, name="venta_anular"),
 
     path("cotizar/", views.cotizacion_nueva, name="cotizacion_nueva"),
+    path("a-medida/", views.cotizacion_medida, name="cotizacion_medida"),
+    path("a-medida/calcular/", views.cotizacion_medida_calcular, name="cotizacion_medida_calcular"),
     path("cotizaciones/", views.cotizaciones_lista, name="cotizaciones"),
     path("cotizaciones/<int:pk>/", views.cotizacion_detalle, name="cotizacion_detalle"),
     path("cotizaciones/<int:pk>/pdf/", views.cotizacion_pdf, name="cotizacion_pdf"),

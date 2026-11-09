@@ -1,0 +1,101 @@
+{% extends "panel/base_panel.html" %}
+{% load static %}
+{% block titulo %}Cotización a medida{% endblock %}
+{% block contenido %}
+<div class="p-titulo">
+  <h1>Cotización a medida</h1>
+  <p class="p-soft">Para algo que no está en el catálogo. Calcula el costo, decide el precio final y agrega fotos. No toca el stock ni el catálogo.</p>
+</div>
+
+{% if errores %}<div class="p-msg error"><ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% if hay_fotos_perdidas %}<div class="p-msg warning">Por seguridad el navegador no conserva las fotos cuando hay un error: vuelve a elegirlas en cada pieza antes de guardar.</div>{% endif %}
+{% if config_json.incompleta %}
+<div class="p-msg warning">Aún no está configurado el costo de la impresora, así que el precio sugerido solo cubre el filamento. Complétalo en <a href="{% url 'admin:catalogo_configuracionsitio_changelist' %}">Admin → Configuración del sitio → Costo de la impresora</a>.</div>
+{% endif %}
+
+<form id="form-medida" class="p-venta" method="post" enctype="multipart/form-data"
+      data-calc="{% url 'panel:cotizacion_medida_calcular' %}" data-max-fotos="{{ max_fotos }}" data-max-piezas="{{ max_piezas }}">
+  {% csrf_token %}
+
+  <section class="p-col-productos">
+    <div id="piezas"></div>
+    <button type="button" id="agregar-pieza" class="p-btn p-btn-sec">+ Agregar otra pieza</button>
+  </section>
+
+  <aside class="p-col-detalle">
+    <details class="p-card p-opciones" open>
+      <summary>Descuento, cliente y notas</summary>
+      <div class="p-opciones-in">
+        <div class="p-dos">
+          <label>Descuento adicional (Bs.)
+            <input type="text" name="descuento_extra" inputmode="numeric" value="{{ post.descuento_extra }}" placeholder="0"></label>
+          <label>Cliente <input type="text" name="cliente" maxlength="120" value="{{ post.cliente }}" placeholder="opcional"></label>
+        </div>
+        <label>Válida por (días) <input type="number" name="validez_dias" min="1" value="{{ post.validez_dias|default:'7' }}" inputmode="numeric"></label>
+        <label>Observaciones <textarea name="observaciones" rows="2">{{ post.observaciones }}</textarea></label>
+        <p class="p-soft">Las promociones por cantidad del catálogo no se aplican aquí: el precio de cada pieza ya es el final.</p>
+      </div>
+    </details>
+
+    <div class="p-totalbar">
+      <div id="resumen-medida" class="rc"><div class="rc-total"><small>Total</small><b>Bs. 0</b></div></div>
+      <button class="p-btn p-btn-total" type="submit" id="guardar-medida">Crear cotización</button>
+    </div>
+  </aside>
+</form>
+
+<template id="tpl-pieza">
+  <div class="p-card p-pieza">
+    <input type="hidden" name="pieza" value="">
+    <div class="p-pieza-cab">
+      <h2>Pieza <span class="p-pieza-n">1</span></h2>
+      <button type="button" class="p-quitar p-quitar-pieza" title="Quitar esta pieza" aria-label="Quitar esta pieza">✕</button>
+    </div>
+
+    <fieldset class="p-bloque">
+      <legend>1 · Qué es <small>(lo que verá el cliente)</small></legend>
+      <label>Nombre <input type="text" data-f="nombre" maxlength="150" required placeholder="Ej: Dinosaurio articulado"></label>
+      <label>Descripción <textarea data-f="descripcion" rows="3" required placeholder="Cómo es, material, acabado, detalles…"></textarea></label>
+      <label>Medidas <small>(opcional)</small>
+        <input type="text" data-f="medidas" maxlength="300" placeholder="Ej: Alto 12 cm, base de 8 × 8 cm"></label>
+      <div class="p-fotos">
+        <label class="p-btn p-btn-sec p-fotos-btn">📷 Agregar fotos
+          <input type="file" data-f="fotos" accept="image/*" multiple hidden></label>
+        <span class="p-soft p-fotos-cuenta"></span>
+        <div class="p-fotos-prev"></div>
+      </div>
+    </fieldset>
+
+    <fieldset class="p-bloque p-costeo">
+      <legend>2 · Costo <small>(solo para ti: no sale en el PDF)</small></legend>
+      <p class="p-soft">Escribe los datos de <b>una sola unidad</b>. Los toma del programa de impresión (laminador).</p>
+      <div class="p-tres">
+        <label>Filamento <select data-f="filamento"><option value="">Elegir…</option></select></label>
+        <label>Peso (g) <input type="text" data-f="peso" inputmode="decimal" placeholder="Ej: 45"></label>
+        <label>Tiempo de impresión
+          <span class="p-tiempo"><input type="number" data-f="horas" min="0" max="9999" inputmode="numeric" placeholder="0"><i>h</i>
+            <input type="number" data-f="minutos" min="0" max="59" inputmode="numeric" placeholder="0"><i>min</i></span></label>
+      </div>
+      <div class="p-dos p-otro" hidden>
+        <label>Nombre del filamento <input type="text" data-f="otro_nombre" maxlength="80" placeholder="Ej: PLA seda dorado"></label>
+        <label>Costo por kg (Bs.) <input type="text" data-f="otro_costo" inputmode="decimal" placeholder="Ej: 120"></label>
+      </div>
+      <div class="p-calculo" aria-live="polite"></div>
+    </fieldset>
+
+    <fieldset class="p-bloque">
+      <legend>3 · Precio</legend>
+      <div class="p-tres">
+        <label>Cantidad <input type="number" data-f="cantidad" min="1" value="1" inputmode="numeric" required></label>
+        <label>Precio final c/u (Bs.) <input type="text" data-f="precio" inputmode="numeric" required placeholder="Tú decides"></label>
+        <button type="button" class="p-btn p-btn-sec p-usar-sug" hidden>Usar sugerido</button>
+      </div>
+      <p class="p-ganancia"></p>
+    </fieldset>
+  </div>
+</template>
+
+{{ filamentos_json|json_script:"datos-filamentos" }}
+{{ piezas_previas_json|json_script:"piezas-previas" }}
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/panel_medida.js' %}"></script>{% endblock %}

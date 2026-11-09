@@ -319,28 +319,17 @@ class Producto(models.Model):
 
         Devuelve (costo_estimado, precio_sugerido) o (None, None) si faltan datos
         (peso, horas o filamento) para poder calcularlo.
+
+        La fórmula vive en ConfiguracionSitio.desglose_costo (la comparte con las
+        cotizaciones a medida, para que ambas den siempre el mismo resultado).
         """
         if not self.peso_gramos or not self.horas_impresion or not self.filamento:
             return None, None
 
-        config = ConfiguracionSitio.get()
-
-        costo_material = (self.peso_gramos / 1000) * self.filamento.costo_por_kg
-        costo_maquina = self.horas_impresion * config.costo_hora_impresora
-        costo_estimado = costo_material + costo_maquina
-
-        tasa_fallas = config.tasa_fallas_pct / 100
-        if tasa_fallas > 0:
-            costo_estimado = costo_estimado / (1 - tasa_fallas)
-
-        margen = config.margen_ganancia_pct / 100
-        if margen > 0:
-            precio_sugerido = costo_estimado / (1 - margen)
-        else:
-            precio_sugerido = costo_estimado
-
-        from decimal import Decimal
-        return costo_estimado.quantize(Decimal("0.01")), precio_sugerido.quantize(Decimal("0.01"))
+        d = ConfiguracionSitio.get().desglose_costo(
+            self.peso_gramos, self.horas_impresion, self.filamento.costo_por_kg
+        )
+        return d["costo"], d["precio_sugerido"]
 
 
 class LikeProducto(models.Model):
@@ -532,6 +521,40 @@ class ConfiguracionSitio(models.Model):
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+    def desglose_costo(self, peso_gramos, horas, costo_por_kg):
+        """Fórmula única del costo y del precio sugerido de una pieza impresa.
+
+        - material  = peso (kg) x costo del filamento por kg
+        - maquina   = horas x costo por hora de la impresora
+        - costo     = (material + maquina) / (1 - % de fallas)
+        - sugerido  = costo / (1 - % de margen)
+
+        Devuelve un dict (todo en Decimal, redondeado a centavos) con: material, maquina,
+        fallas (lo que suman las piezas que fallan), costo y precio_sugerido.
+        """
+        from decimal import Decimal
+
+        material = (Decimal(peso_gramos) / 1000) * Decimal(costo_por_kg)
+        maquina = Decimal(horas) * self.costo_hora_impresora
+        base = material + maquina
+
+        costo = base
+        tasa_fallas = self.tasa_fallas_pct / 100
+        if tasa_fallas > 0:
+            costo = base / (1 - tasa_fallas)
+
+        margen = self.margen_ganancia_pct / 100
+        precio_sugerido = costo / (1 - margen) if margen > 0 else costo
+
+        centavos = Decimal("0.01")
+        return {
+            "material": material.quantize(centavos),
+            "maquina": maquina.quantize(centavos),
+            "fallas": (costo - base).quantize(centavos),
+            "costo": costo.quantize(centavos),
+            "precio_sugerido": precio_sugerido.quantize(centavos),
+        }
 
     @property
     def costo_hora_impresora(self):

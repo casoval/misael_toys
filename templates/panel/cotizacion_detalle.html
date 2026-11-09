@@ -8,6 +8,7 @@
 <p><a class="p-btn p-btn-grande" href="{% url 'panel:cotizacion_pdf' cot.pk %}" target="_blank" rel="noopener">Abrir cotización (PDF)</a></p>
 
 <div class="p-card">
+  {% if items %}
   <div class="p-tabla-wrap">
     <table class="p-tabla">
       <thead><tr><th class="n">N°</th><th>Cód.</th><th>Producto</th><th class="c">Cant.</th><th class="d">P. unitario</th><th class="d">Subtotal</th></tr></thead>
@@ -25,6 +26,31 @@
       </tbody>
     </table>
   </div>
+  {% endif %}
+  {% if piezas %}
+  <h2>Piezas a medida <small class="p-soft">(no están en el catálogo)</small></h2>
+  {% for pz in piezas %}
+  <div class="p-pieza-det">
+    <div class="info">
+      <h3><span class="p-tag p-tag-medida">A medida</span> N° {{ forloop.counter|add:primer_n_pieza|add:"-1" }} · {{ pz.nombre }}</h3>
+      <p>{{ pz.descripcion|linebreaksbr }}</p>
+      {% if pz.medidas %}<p class="p-soft"><b>Medidas:</b> {{ pz.medidas }}</p>{% endif %}
+      {% if user.is_staff and pz.tiene_costeo %}
+      <div class="p-costeo-det">
+        <b>Costeo (interno, no sale en el PDF)</b><br>
+        {{ pz.filamento_nombre|default:"Filamento" }} · {{ pz.peso_gramos|floatformat:"-1" }} g · {{ pz.tiempo_texto }}
+        · Costo <b>Bs. {{ pz.costo_estimado|floatformat:0 }}</b> · Sugerido <b>Bs. {{ pz.precio_sugerido|floatformat:0 }}</b>
+        · Precio final <b>Bs. {{ pz.precio_unitario|floatformat:0 }}</b>
+        {% if pz.bajo_costo %}<br><span class="mal">⚠ Cotizado por debajo del costo ({{ pz.ganancia_unitaria|floatformat:0 }} Bs por unidad).</span>
+        {% else %}· Ganancia <b>Bs. {{ pz.ganancia_unitaria|floatformat:0 }}</b> por unidad{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% if pz.fotos.all %}<div class="fotos">{% for f in pz.fotos.all %}<a href="{{ f.grande }}" target="_blank" rel="noopener"><img src="{{ f.miniatura }}" alt="Foto {{ forloop.counter }} de {{ pz.nombre }}"></a>{% endfor %}</div>{% endif %}
+    <div class="precio">{{ pz.cantidad }} × Bs. {{ pz.precio_unitario|floatformat:0 }}<br><b>Bs. {{ pz.subtotal|floatformat:0 }}</b></div>
+  </div>
+  {% endfor %}
+  {% endif %}
   <div class="p-resumen">
     <div class="fila"><span>Subtotal</span><b>Bs. {{ cot.subtotal|floatformat:0 }}</b></div>
     {% for linea in cot.detalle_reglas.splitlines %}<div class="fila desc"><span>🏷 {{ linea }}</span></div>{% endfor %}

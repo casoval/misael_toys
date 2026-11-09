@@ -22,6 +22,7 @@
         <a style="--c:#5FBF57" href="{% url 'panel:venta_nueva' %}" {% if u == 'venta_nueva' %}class="on"{% endif %}>Vender</a>
         <a style="--c:#2F9BE0" href="{% url 'panel:ventas' %}" {% if u == 'ventas' or u == 'venta_detalle' %}class="on"{% endif %}>Ventas</a>
         <a style="--c:#8B5CF6" href="{% url 'panel:cotizacion_nueva' %}" {% if u == 'cotizacion_nueva' %}class="on"{% endif %}>Cotizar</a>
+        {% if user.is_staff %}<a style="--c:#FF6F59" href="{% url 'panel:cotizacion_medida' %}" {% if u == 'cotizacion_medida' %}class="on"{% endif %}>A medida</a>{% endif %}
         <a style="--c:#F0609B" href="{% url 'panel:cotizaciones' %}" {% if u == 'cotizaciones' or u == 'cotizacion_detalle' %}class="on"{% endif %}>Cotizaciones</a>
         {% if user.is_staff %}<a style="--c:#FFB238;--t:#3a2a00" href="{% url 'panel:usuarios' %}" {% if u == 'usuarios' %}class="on"{% endif %}>Usuarios</a>{% endif %}
       </nav>

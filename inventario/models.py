@@ -9,7 +9,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from catalogo.models import Categoria, Producto
+from catalogo.models import Categoria, Filamento, Producto
 
 DINERO = dict(max_digits=10, decimal_places=2)
 
@@ -283,15 +283,23 @@ class Cotizacion(models.Model):
 
     @property
     def unidades(self):
-        return sum(i.cantidad for i in self.items.all())
+        return (sum(i.cantidad for i in self.items.all())
+                + sum(i.cantidad for i in self.items_personalizados.all()))
 
     @property
     def codigos_resumen(self):
         """Códigos de los productos, para verlos de un vistazo en las listas: 'J001 · J004 +2'.
+        Las piezas a medida no tienen código: se muestra su nombre.
         (usa los ítems ya precargados: sin consultas extra)"""
         codigos = [i.producto.codigo or i.producto.nombre for i in self.items.all()]
+        codigos += [i.nombre for i in self.items_personalizados.all()]
         texto = " · ".join(codigos[:4])
         return texto + (f" +{len(codigos) - 4}" if len(codigos) > 4 else "")
+
+    @property
+    def es_a_medida(self):
+        """True si lleva piezas que no son del catálogo (usa los ítems ya precargados)."""
+        return bool(self.items_personalizados.all())
 
     @property
     def descuento_total(self):
@@ -307,3 +315,101 @@ class CotizacionItem(models.Model):
     @property
     def subtotal(self):
         return self.cantidad * self.precio_unitario
+
+
+class CotizacionItemPersonalizado(models.Model):
+    """Pieza cotizada que NO está en el catálogo (un pedido a medida, una idea, una opción
+    que quizá nunca se venda). No es un Producto: no aparece en el sitio, no tiene stock ni
+    código, y no se puede vender desde «Vender».
+
+    Lo que ve el cliente en el PDF: nombre, descripción, medidas (opcional), fotos, cantidad y
+    precio. Los datos de costeo (filamento, peso, horas, costo, sugerido) son INTERNOS: solo se
+    guardan para que el admin recuerde cómo se llegó al precio; el PDF nunca los muestra."""
+
+    cotizacion = models.ForeignKey(Cotizacion, on_delete=models.CASCADE, related_name="items_personalizados")
+    orden = models.PositiveIntegerField(default=0)
+
+    # --- Lo que ve el cliente ---
+    nombre = models.CharField(max_length=150)
+    descripcion = models.TextField()
+    medidas = models.CharField(
+        max_length=300, blank=True,
+        help_text="Opcional. Ej: 'Alto 12 cm, base de 8 x 8 cm' o 'Anillos de 4 a 8 cm'")
+    cantidad = models.PositiveIntegerField(default=1)
+    precio_unitario = models.DecimalField(**DINERO, help_text="Precio final por unidad que decidió el admin")
+
+    # --- Costeo interno (nunca va al PDF) ---
+    # El filamento se guarda como NOMBRE y COSTO por kg del momento: si después cambia el precio
+    # del rollo (o se borra el filamento), esta cotización conserva el cálculo con el que se hizo.
+    filamento = models.ForeignKey(Filamento, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    filamento_nombre = models.CharField(max_length=80, blank=True)
+    filamento_costo_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    peso_gramos = models.DecimalField(max_digits=8, decimal_places=1, null=True, blank=True)
+    horas_impresion = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    costo_estimado = models.DecimalField(**DINERO, null=True, blank=True)
+    precio_sugerido = models.DecimalField(**DINERO, null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Ítem a medida de cotización"
+        verbose_name_plural = "Ítems a medida de cotización"
+        ordering = ["orden", "id"]
+
+    def __str__(self):
+        return f"{self.cantidad} × {self.nombre}"
+
+    @property
+    def subtotal(self):
+        return self.cantidad * self.precio_unitario
+
+    @property
+    def tiene_costeo(self):
+        return self.costo_estimado is not None
+
+    @property
+    def tiempo_texto(self):
+        """Tiempo de impresión legible: 6.5 -> '6 h 30 min'."""
+        if self.horas_impresion is None:
+            return ""
+        minutos = int((self.horas_impresion * 60).quantize(Decimal("1"), rounding="ROUND_HALF_UP"))
+        h, m = divmod(minutos, 60)
+        return " ".join(filter(None, [f"{h} h" if h else "", f"{m} min" if m else ""])) or "0 min"
+
+    @property
+    def ganancia_unitaria(self):
+        """Precio final menos el costo estimado (puede ser negativa: se cotizó bajo el costo)."""
+        if self.costo_estimado is None:
+            return None
+        return self.precio_unitario - self.costo_estimado
+
+    @property
+    def bajo_costo(self):
+        return self.costo_estimado is not None and self.precio_unitario < self.costo_estimado
+
+
+class FotoItemPersonalizado(models.Model):
+    """Foto de referencia de una pieza a medida (hasta MAX_FOTOS por pieza)."""
+
+    MAX_FOTOS = 6
+
+    item = models.ForeignKey(CotizacionItemPersonalizado, on_delete=models.CASCADE, related_name="fotos")
+    imagen = models.ImageField(upload_to="cotizaciones/%Y/%m/")
+    orden = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Foto de pieza a medida"
+        verbose_name_plural = "Fotos de piezas a medida"
+        ordering = ["orden", "id"]
+
+    def __str__(self):
+        return f"Foto {self.orden + 1} de {self.item.nombre}"
+
+    @property
+    def miniatura(self):
+        """Foto chica para las pantallas del panel (en Cloudinary se pide ya recortada)."""
+        from catalogo.models import _url_cloudinary_transformada
+        return _url_cloudinary_transformada(self.imagen.url, "w_300,h_300,c_fill,q_auto,f_auto")
+
+    @property
+    def grande(self):
+        from catalogo.models import _url_cloudinary_transformada
+        return _url_cloudinary_transformada(self.imagen.url, "w_900,q_auto,f_auto")

@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    Cotizacion, CotizacionItem, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta, VentaItem,
+    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta, VentaItem,
 )
 
 
@@ -106,11 +106,24 @@ class CotizacionItemInline(admin.TabularInline):
         return False
 
 
+class CotizacionItemPersonalizadoInline(admin.TabularInline):
+    model = CotizacionItemPersonalizado
+    extra = 0
+    can_delete = False
+    fields = ("nombre", "cantidad", "precio_unitario", "filamento_nombre", "peso_gramos", "horas_impresion",
+              "costo_estimado", "precio_sugerido")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(Cotizacion)
 class CotizacionAdmin(admin.ModelAdmin):
     list_display = ("id", "creado", "creador", "cliente", "total")
-    search_fields = ("cliente", "items__producto__codigo", "items__producto__nombre", "creador__username")
-    inlines = [CotizacionItemInline]
+    search_fields = ("cliente", "items__producto__codigo", "items__producto__nombre",
+                     "items_personalizados__nombre", "creador__username")
+    inlines = [CotizacionItemInline, CotizacionItemPersonalizadoInline]
     readonly_fields = [f.name for f in Cotizacion._meta.fields]
 
     def has_add_permission(self, request):

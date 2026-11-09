@@ -11,18 +11,18 @@ from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Prefetch, Q, Sum
 from django.db.models.functions import Lower
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from catalogo.models import Atributo, Categoria, Producto, ValorAtributo
+from catalogo.models import Atributo, Categoria, ConfiguracionSitio, Filamento, Producto, ValorAtributo
 
 from . import servicios
 from . import catalogo_pdf
 from .fotos import foto_panel
-from .lineas import leer_decimal, leer_lineas
+from .lineas import leer_costeo, leer_decimal, leer_lineas, leer_piezas_a_medida
 from .models import (
-    Cotizacion, CotizacionItem, MovimientoStock, PerfilVendedor, Stock, Ubicacion, Venta, VentaItem,
+    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, MovimientoStock, PerfilVendedor, Stock, Ubicacion, Venta, VentaItem,
     ids_ubicaciones_propias,
 )
 from .pdf import generar_pdf_cotizacion, generar_pdf_recibo
@@ -385,15 +385,20 @@ def _ventas_visibles(request):
     return qs
 
 
-def _buscar_en_documento(texto, modelo_item, campo_documento, campo_usuario):
+def _buscar_en_documento(texto, modelo_item, campo_documento, campo_usuario, con_piezas_a_medida=False):
     """Condición para buscar ventas/cotizaciones por el CÓDIGO o el nombre de alguno de sus productos,
     por cliente, por usuario (vendedor/creador), por observaciones o por número. Usa una subconsulta
-    (no un JOIN) para que los totales no se dupliquen."""
+    (no un JOIN) para que los totales no se dupliquen. En cotizaciones también busca en las piezas
+    a medida (nombre y descripción)."""
     con_producto = modelo_item.objects.filter(
         Q(producto__codigo__icontains=texto) | Q(producto__nombre__icontains=texto)
     ).values(campo_documento)
     condicion = (Q(pk__in=con_producto) | Q(cliente__icontains=texto)
                  | Q(observaciones__icontains=texto) | Q(**{f"{campo_usuario}__username__icontains": texto}))
+    if con_piezas_a_medida:
+        a_medida = CotizacionItemPersonalizado.objects.filter(
+            Q(nombre__icontains=texto) | Q(descripcion__icontains=texto)).values("cotizacion_id")
+        condicion |= Q(pk__in=a_medida)
     numero = texto.lstrip("#").strip()
     if numero.isdigit():
         condicion |= Q(pk=int(numero))
@@ -422,7 +427,7 @@ def _orden_documentos(campo_usuario):
     }
 
 
-def _filtrar_y_ordenar(request, qs, modelo_item, campo_documento, campo_usuario):
+def _filtrar_y_ordenar(request, qs, modelo_item, campo_documento, campo_usuario, con_piezas_a_medida=False):
     """Búsqueda, rango de fechas, usuario y orden, compartidos por Ventas y Cotizaciones."""
     texto = request.GET.get("q", "").strip()
     usuario = request.GET.get("vendedor", "")
@@ -432,7 +437,7 @@ def _filtrar_y_ordenar(request, qs, modelo_item, campo_documento, campo_usuario)
     if orden not in ordenes:
         orden = "recientes"
     if texto:
-        qs = qs.filter(_buscar_en_documento(texto, modelo_item, campo_documento, campo_usuario))
+        qs = qs.filter(_buscar_en_documento(texto, modelo_item, campo_documento, campo_usuario, con_piezas_a_medida))
     if request.user.is_staff and usuario.isdigit():
         qs = qs.filter(**{f"{campo_usuario}_id": int(usuario)})
     if desde:
@@ -553,14 +558,14 @@ def cotizacion_nueva(request):
 
 
 def _cotizaciones_visibles(request):
-    qs = Cotizacion.objects.select_related("creador").prefetch_related("items__producto")
+    qs = Cotizacion.objects.select_related("creador").prefetch_related("items__producto", "items_personalizados")
     return qs if request.user.is_staff else qs.filter(creador=request.user)
 
 
 @login_required
 def cotizaciones_lista(request):
     cotizaciones, filtros, ordenes = _filtrar_y_ordenar(
-        request, _cotizaciones_visibles(request), CotizacionItem, "cotizacion_id", "creador")
+        request, _cotizaciones_visibles(request), CotizacionItem, "cotizacion_id", "creador", con_piezas_a_medida=True)
     return render(request, "panel/cotizaciones_lista.html", {
         "cotizaciones": cotizaciones[:200], "f": filtros, "ordenes": ordenes,
         "creadores": User.objects.filter(cotizaciones__isnull=False).distinct() if request.user.is_staff else [],
@@ -570,7 +575,11 @@ def cotizaciones_lista(request):
 @login_required
 def cotizacion_detalle(request, pk):
     cot = get_object_or_404(_cotizaciones_visibles(request), pk=pk)
-    return render(request, "panel/cotizacion_detalle.html", {"cot": cot, "items": cot.items.select_related("producto")})
+    return render(request, "panel/cotizacion_detalle.html", {
+        "cot": cot, "items": cot.items.select_related("producto"),
+        # Las piezas a medida siguen la numeración de los productos del catálogo (como en el PDF).
+        "piezas": cot.items_personalizados.prefetch_related("fotos"), "primer_n_pieza": cot.items.count() + 1,
+    })
 
 
 @login_required
@@ -579,6 +588,74 @@ def cotizacion_pdf(request, pk):
     respuesta = HttpResponse(generar_pdf_cotizacion(cot), content_type="application/pdf")
     respuesta["Content-Disposition"] = f'inline; filename="cotizacion-{cot.numero}.pdf"'
     return respuesta
+
+
+# --------------------------------------------------------------------------
+# Cotización a medida: piezas que NO están en el catálogo (solo admin: maneja costos)
+# --------------------------------------------------------------------------
+def _pct(valor):
+    """Porcentaje legible: Decimal('10.00') -> '10', Decimal('12.50') -> '12.5' (normalize() solo daría '1E+1')."""
+    return format(Decimal(valor).normalize(), "f")
+
+
+def _contexto_a_medida(request, previas=None, errores=None):
+    config = ConfiguracionSitio.get()
+    return {
+        "filamentos_json": [{"id": f.pk, "nombre": f.nombre, "costo_kg": str(f.costo_por_kg)}
+                            for f in Filamento.objects.filter(activo=True)],
+        "config_json": {"costo_hora": str(config.costo_hora_impresora), "fallas": _pct(config.tasa_fallas_pct),
+                        "margen": _pct(config.margen_ganancia_pct),
+                        "incompleta": config.costo_hora_impresora <= 0},
+        "piezas_previas_json": previas or [],
+        "errores": errores or [],
+        "max_fotos": FotoItemPersonalizado.MAX_FOTOS,
+        "max_piezas": servicios.MAX_PIEZAS_A_MEDIDA,
+        "post": request.POST if request.method == "POST" else {},
+        "hay_fotos_perdidas": bool(errores) and any(request.FILES.getlist(k) for k in request.FILES),
+    }
+
+
+@solo_admin
+def cotizacion_medida(request):
+    """Cotizar algo que no está en el catálogo: se escribe qué es (nombre, descripción, medidas, fotos),
+    se calcula el costo con filamento + peso + tiempo y se decide el precio final."""
+    if request.method == "POST":
+        piezas, errores, previas = leer_piezas_a_medida(request.POST, request.FILES)
+        validez = _entero(request.POST.get("validez_dias")) or 7
+        if not piezas and not errores:
+            errores = ["Agrega al menos una pieza."]
+        if not errores:
+            try:
+                cot = servicios.crear_cotizacion_a_medida(
+                    request.user, piezas, cliente=request.POST.get("cliente", ""),
+                    observaciones=request.POST.get("observaciones", ""), validez_dias=max(1, validez),
+                    descuento_extra=leer_decimal(request.POST.get("descuento_extra")),
+                )
+                messages.success(request, f"Cotización {cot.numero} lista. Ábrela en PDF para enviarla.")
+                return redirect("panel:cotizacion_detalle", pk=cot.pk)
+            except ErrorNegocio as e:
+                errores = [str(e)]
+        return render(request, "panel/cotizacion_medida.html", _contexto_a_medida(request, previas, errores))
+    return render(request, "panel/cotizacion_medida.html", _contexto_a_medida(request))
+
+
+@solo_admin
+@require_POST
+def cotizacion_medida_calcular(request):
+    """Costo y precio sugerido de UNA pieza mientras se escribe (lo llama el formulario con fetch).
+    Usa la misma fórmula que los productos del catálogo."""
+    g = request.POST.get
+    costeo, error = leer_costeo(g("peso"), g("horas"), g("minutos"), g("filamento"), g("otro_nombre"), g("otro_costo"))
+    if costeo is None:
+        # Sin nada escrito es normal (no hay que quejarse); con datos a medias se explica qué falta.
+        return JsonResponse({"ok": False, "vacio": error is None, "mensaje": error or ""})
+    d = servicios.costear_pieza(costeo["peso_gramos"], costeo["horas"], costeo["costo_por_kg"])
+    return JsonResponse({
+        "ok": True, "material": int(d["material"]), "maquina": int(d["maquina"]), "fallas": int(d["fallas"]),
+        "costo": int(d["costo"]), "sugerido": int(d["precio_sugerido"]),
+        "costo_hora": f"{d['costo_hora']:.2f}", "fallas_pct": _pct(d["tasa_fallas_pct"]),
+        "margen_pct": _pct(d["margen_pct"]), "config_incompleta": d["config_incompleta"],
+    })
 
 
 # --------------------------------------------------------------------------

@@ -21,7 +21,7 @@
 <div class="p-lista">
 {% for c in cotizaciones %}
   <a class="p-fila-venta" href="{% url 'panel:cotizacion_detalle' c.pk %}">
-    <div><strong>N° {{ c.numero }}</strong> <span class="p-soft">{{ c.creado|date:"d/m/Y H:i" }}</span><br>
+    <div><strong>N° {{ c.numero }}</strong>{% if c.es_a_medida %} <span class="p-tag p-tag-medida">A medida</span>{% endif %} <span class="p-soft">{{ c.creado|date:"d/m/Y H:i" }}</span><br>
       <span class="p-soft">{{ c.creador.username|default:"—" }}{% if c.cliente %} → {{ c.cliente }}{% endif %} · {{ c.unidades }} unid.</span>
       <br><span class="p-codigos">{{ c.codigos_resumen }}</span></div>
     <div class="p-monto">Bs. {{ c.total|floatformat:0 }}</div>

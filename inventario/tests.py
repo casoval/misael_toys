@@ -1530,3 +1530,454 @@ class DescuentoPorProductoTests(Base):
         self.assertEqual([i.descuento for i in v.items.order_by("id")], [D(8), D(17)])  # 25 en total
         self.assertEqual(sum(i.neto for i in v.items.all()), v.total)
         self.assertEqual(sin_descuento.items.get().descuento, D(0))
+
+
+# ==========================================================================
+# Cotización a medida: piezas que NO están en el catálogo
+# ==========================================================================
+def _subida(color="red", ancho=800, alto=600, nombre="foto.png"):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    return SimpleUploadedFile(nombre, _png(color, ancho, alto), content_type="image/png")
+
+
+class BaseAMedida(Base):
+    """Impresora configurada: costo/hora 1,096 Bs; 10 % de fallas; 50 % de margen; PLA a 90 Bs/kg."""
+
+    def setUp(self):
+        import tempfile
+        from catalogo.models import ConfiguracionSitio, Filamento
+        super().setUp()
+        self._media = tempfile.mkdtemp()
+        self._ov = override_settings(MEDIA_ROOT=self._media)
+        self._ov.enable()
+        self.addCleanup(self._ov.disable)
+        self.addCleanup(shutil.rmtree, self._media, True)
+        c = ConfiguracionSitio.get()
+        c.precio_impresora, c.vida_util_horas = D("3500"), 5000          # 0,70 /h
+        c.potencia_impresora_kw, c.precio_kwh = D("0.12"), D("0.8")      # 0,096 /h
+        c.mantenimiento_anual, c.horas_uso_anual = D("600"), 2000        # 0,30 /h
+        c.tasa_fallas_pct, c.margen_ganancia_pct = D("10"), D("50")
+        c.save()
+        self.pla = Filamento.objects.create(nombre="PLA blanco", costo_por_kg=D("90"))
+
+    def costeo(self, peso="120", horas="6.5"):
+        return {"peso_gramos": D(peso), "horas": D(horas), "costo_por_kg": self.pla.costo_por_kg,
+                "filamento": self.pla, "filamento_nombre": self.pla.nombre}
+
+    def pieza(self, **extra):
+        datos = {"nombre": "Dinosaurio", "descripcion": "Articulado, en PLA blanco.", "medidas": "Alto 12 cm",
+                 "cantidad": 2, "precio_unitario": D("85"), "fotos": [], "costeo": self.costeo()}
+        datos.update(extra)
+        return datos
+
+    def post_pieza(self, i, **campos):
+        base = {"nombre": "Dinosaurio", "descripcion": "Articulado.", "medidas": "", "cantidad": "2", "precio": "85",
+                "filamento": str(self.pla.pk), "peso": "120", "horas": "6", "minutos": "30"}
+        base.update(campos)
+        return {f"p{i}_{k}": v for k, v in base.items()}
+
+
+class FormulaDeCostoTests(BaseAMedida):
+    def test_desglose_de_una_pieza(self):
+        from catalogo.models import ConfiguracionSitio
+        d = ConfiguracionSitio.get().desglose_costo(D("120"), D("6.5"), D("90"))
+        self.assertEqual(d["material"], D("10.80"))        # 0,12 kg × 90
+        self.assertEqual(d["maquina"], D("7.12"))          # 6,5 h × 1,096
+        self.assertEqual(d["costo"], D("19.92"))           # (10,80 + 7,12) / 0,9
+        self.assertEqual(d["precio_sugerido"], D("39.83"))  # 19,92 / 0,5
+
+    def test_costear_pieza_va_en_enteros(self):
+        d = servicios.costear_pieza(D("120"), D("6.5"), D("90"))
+        self.assertEqual((d["costo"], d["precio_sugerido"]), (D("20"), D("40")))
+        self.assertFalse(d["config_incompleta"])
+
+    def test_misma_cuenta_que_un_producto_del_catalogo(self):
+        """El producto del catálogo y la cotización a medida comparten la fórmula: nunca se desfasan."""
+        p = Producto.objects.create(nombre="Igual", precio=D("50"), filamento=self.pla,
+                                    peso_gramos=D("120"), horas_impresion=D("6.5"))
+        self.assertEqual(p.calcular_costo_y_precio_sugerido(), (D("19.92"), D("39.83")))
+
+    def test_sin_configurar_la_impresora_se_avisa(self):
+        from catalogo.models import ConfiguracionSitio
+        ConfiguracionSitio.objects.update(precio_impresora=None, potencia_impresora_kw=None, mantenimiento_anual=None)
+        d = servicios.costear_pieza(D("100"), D("5"), D("90"))
+        self.assertTrue(d["config_incompleta"])
+        self.assertEqual(d["maquina"], D("0"))
+
+
+class LecturaDeCosteoTests(BaseAMedida):
+    def test_horas_y_minutos(self):
+        from .lineas import horas_desde
+        self.assertEqual(horas_desde("5", "30"), D("5.50"))
+        self.assertEqual(horas_desde("", "45"), D("0.75"))
+        self.assertEqual(horas_desde("2", ""), D("2.00"))
+        self.assertEqual(horas_desde("5", "20"), D("5.33"))
+        self.assertIsNone(horas_desde("0", "0"))
+        self.assertIsNone(horas_desde("x", ""))
+
+    def test_todo_o_nada(self):
+        from .lineas import leer_costeo
+        self.assertEqual(leer_costeo("", "", "", ""), (None, None))          # nada escrito: sin costeo
+        _, error = leer_costeo("100", "", "", "")                              # a medias: se explica qué falta
+        self.assertIn("filamento", error)
+        self.assertIn("tiempo", error)
+        self.assertNotIn("peso", error)
+
+    def test_costeo_correcto(self):
+        from .lineas import leer_costeo
+        costeo, error = leer_costeo("45,5", "2", "30", str(self.pla.pk))
+        self.assertIsNone(error)
+        self.assertEqual(costeo["peso_gramos"], D("45.5"))
+        self.assertEqual(costeo["horas"], D("2.50"))
+        self.assertEqual(costeo["filamento"], self.pla)
+
+    def test_filamento_otro_pide_el_costo_por_kg(self):
+        from .lineas import leer_costeo
+        _, error = leer_costeo("50", "1", "0", "otro", "PLA seda", "")
+        self.assertIn("costo por kg", error)
+        costeo, error = leer_costeo("50", "1", "0", "otro", "PLA seda", "120")
+        self.assertIsNone(error)
+        self.assertIsNone(costeo["filamento"])
+        self.assertEqual((costeo["filamento_nombre"], costeo["costo_por_kg"]), ("PLA seda", D("120")))
+
+    def test_valores_invalidos(self):
+        from .lineas import leer_costeo
+        from catalogo.models import Filamento
+        viejo = Filamento.objects.create(nombre="Descontinuado", costo_por_kg=D("50"), activo=False)
+        for args in (("0", "1", "0", str(self.pla.pk)), ("abc", "1", "0", str(self.pla.pk)),
+                     ("50", "0", "0", str(self.pla.pk)), ("50", "1", "0", "99999"), ("50", "1", "0", str(viejo.pk))):
+            self.assertIsNotNone(leer_costeo(*args)[1], args)
+
+
+class FotosSubidasTests(BaseAMedida):
+    def test_se_reduce_y_queda_en_jpeg(self):
+        from PIL import Image
+        from .imagenes import LADO_MAXIMO_PX, preparar_foto
+        salida = preparar_foto(_subida("blue", 4000, 3000))
+        img = Image.open(BytesIO(salida.read()))
+        self.assertEqual(img.format, "JPEG")
+        self.assertEqual(max(img.size), LADO_MAXIMO_PX)
+        self.assertEqual(img.size, (1600, 1200))        # conserva la proporción
+
+    def test_una_foto_chica_no_se_agranda(self):
+        from PIL import Image
+        from .imagenes import preparar_foto
+        self.assertEqual(Image.open(BytesIO(preparar_foto(_subida("red", 300, 200)).read())).size, (300, 200))
+
+    def test_respeta_la_orientacion_del_celular(self):
+        """Los celulares guardan la foto «acostada» + una nota de giro (EXIF): debe quedar derecha."""
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .imagenes import preparar_foto
+        img = Image.new("RGB", (200, 100), "green")
+        exif = img.getexif()
+        exif[0x0112] = 6   # girar 90°
+        buf = BytesIO()
+        img.save(buf, "JPEG", exif=exif)
+        salida = preparar_foto(SimpleUploadedFile("c.jpg", buf.getvalue(), content_type="image/jpeg"))
+        self.assertEqual(Image.open(BytesIO(salida.read())).size, (100, 200))
+
+    def test_la_transparencia_pasa_a_fondo_blanco(self):
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .imagenes import preparar_foto
+        buf = BytesIO()
+        Image.new("RGBA", (50, 50), (0, 0, 0, 0)).save(buf, "PNG")
+        img = Image.open(BytesIO(preparar_foto(SimpleUploadedFile("t.png", buf.getvalue(), content_type="image/png")).read()))
+        self.assertGreater(min(img.getpixel((25, 25))), 245)   # blanco, no negro
+
+    def test_rechaza_lo_que_no_es_imagen_o_pesa_demasiado(self):
+        from unittest import mock
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from . import imagenes
+        with self.assertRaises(ErrorNegocio) as c:
+            imagenes.preparar_foto(SimpleUploadedFile("x.png", b"esto no es una imagen", content_type="image/png"))
+        self.assertIn("no es una imagen válida", str(c.exception))
+        with mock.patch.object(imagenes, "MAX_BYTES_SUBIDA", 10), self.assertRaises(ErrorNegocio) as c:
+            imagenes.preparar_foto(_subida())
+        self.assertIn("pesa demasiado", str(c.exception))
+
+
+class ServicioAMedidaTests(BaseAMedida):
+    def test_crea_la_cotizacion_sin_tocar_catalogo_ni_stock(self):
+        productos, stocks = Producto.objects.count(), Stock.objects.count()
+        cot = servicios.crear_cotizacion_a_medida(
+            self.admin, [self.pieza(), self.pieza(nombre="Llavero", cantidad=5, precio_unitario=D("15"), costeo=None)],
+            cliente="María", validez_dias=10, descuento_extra=D("10"))
+        self.assertEqual((Producto.objects.count(), Stock.objects.count()), (productos, stocks))
+        self.assertEqual(cot.items.count(), 0)
+        self.assertEqual(cot.items_personalizados.count(), 2)
+        self.assertEqual((cot.subtotal, cot.descuento_extra, cot.total), (D("245"), D("10"), D("235")))  # 2×85 + 5×15 − 10
+        self.assertEqual(cot.unidades, 7)
+        self.assertTrue(cot.es_a_medida)
+        self.assertIn("Dinosaurio", cot.codigos_resumen)
+
+    def test_no_aplica_las_promociones_del_catalogo(self):
+        """12 unidades activarían el 10 % del catálogo; aquí el precio de cada pieza ya es el final."""
+        cot = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza(cantidad=12, precio_unitario=D("10"))])
+        self.assertEqual((cot.descuento_reglas, cot.detalle_reglas, cot.total), (D("0"), "", D("120")))
+
+    def test_guarda_el_costeo_y_sus_fotos(self):
+        cot = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza(fotos=[_subida("red"), _subida("blue", 400, 900)])])
+        it = cot.items_personalizados.get()
+        self.assertEqual((it.costo_estimado, it.precio_sugerido, it.precio_unitario), (D("20"), D("40"), D("85")))
+        self.assertEqual((it.filamento_nombre, it.peso_gramos, it.horas_impresion), ("PLA blanco", D("120.0"), D("6.50")))
+        self.assertEqual(it.tiempo_texto, "6 h 30 min")
+        self.assertEqual(it.ganancia_unitaria, D("65"))
+        self.assertFalse(it.bajo_costo)
+        self.assertEqual([f.orden for f in it.fotos.all()], [0, 1])
+        self.assertTrue(all(f.imagen.name.endswith(".jpg") for f in it.fotos.all()))
+
+    def test_el_costeo_guardado_no_cambia_si_despues_sube_el_filamento(self):
+        cot = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza()])
+        self.pla.costo_por_kg = D("500")
+        self.pla.save()
+        it = cot.items_personalizados.get()
+        self.assertEqual((it.filamento_costo_kg, it.costo_estimado), (D("90.00"), D("20.00")))
+        self.pla.delete()   # y si se borra el filamento, el nombre queda
+        it.refresh_from_db()
+        self.assertEqual((it.filamento, it.filamento_nombre), (None, "PLA blanco"))
+
+    def test_una_pieza_sin_costeo_es_valida(self):
+        it = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza(costeo=None)]).items_personalizados.get()
+        self.assertIsNone(it.costo_estimado)
+        self.assertFalse(it.tiene_costeo)
+        self.assertEqual(it.tiempo_texto, "")
+
+    def test_avisa_si_se_cotiza_por_debajo_del_costo(self):
+        it = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza(precio_unitario=D("15"))]).items_personalizados.get()
+        self.assertTrue(it.bajo_costo)
+        self.assertEqual(it.ganancia_unitaria, D("-5"))
+
+    def test_validaciones_y_no_queda_nada_a_medias(self):
+        casos = {
+            "sin nombre": self.pieza(nombre="  "), "sin descripción": self.pieza(descripcion=""),
+            "cantidad 0": self.pieza(cantidad=0), "precio 0": self.pieza(precio_unitario=D("0")),
+            "7 fotos": self.pieza(fotos=[_subida() for _ in range(7)]),
+            "foto dañada": self.pieza(fotos=[_subida(), __import__("django.core.files.uploadedfile", fromlist=["x"]).SimpleUploadedFile("r.png", b"no", "image/png")]),
+        }
+        for nombre, pieza in casos.items():
+            with self.subTest(nombre), self.assertRaises(ErrorNegocio):
+                servicios.crear_cotizacion_a_medida(self.admin, [pieza])
+        with self.assertRaises(ErrorNegocio):
+            servicios.crear_cotizacion_a_medida(self.admin, [])
+        self.assertEqual(Cotizacion.objects.count(), 0)   # ninguna falló a medias
+
+    def test_el_descuento_no_supera_el_subtotal(self):
+        cot = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza(cantidad=1, precio_unitario=D("50"))], descuento_extra=D("999"))
+        self.assertEqual((cot.descuento_extra, cot.total), (D("50"), D("0")))
+
+
+class PantallaAMedidaTests(BaseAMedida):
+    def entrar(self, usuario="admin"):
+        self.client.login(username=usuario, password="x")
+
+    def test_solo_el_admin_ve_la_pestana_y_la_pantalla(self):
+        url = reverse("panel:cotizacion_medida")
+        self.assertEqual(self.client.get(url).status_code, 302)           # sin sesión: al login
+        self.entrar("ana")
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertNotIn(url, self.client.get(reverse("panel:cotizacion_nueva")).content.decode())
+        self.client.logout()
+        self.entrar()
+        html = self.client.get(url).content.decode()
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertIn("Cotización a medida", html)
+        self.assertIn(f'href="{url}"', self.client.get(reverse("panel:cotizacion_nueva")).content.decode())  # pestaña
+
+    def test_la_pantalla_no_muestra_codigo_de_plantilla(self):
+        self.entrar()
+        html = self.client.get(reverse("panel:cotizacion_medida")).content.decode()
+        for rastro in ("{#", "#}", "{%"):
+            self.assertNotIn(rastro, html)
+
+    def test_avisa_si_falta_configurar_la_impresora(self):
+        from catalogo.models import ConfiguracionSitio
+        self.entrar()
+        self.assertNotIn("Aún no está configurado el costo", self.client.get(reverse("panel:cotizacion_medida")).content.decode())
+        ConfiguracionSitio.objects.update(precio_impresora=None, potencia_impresora_kw=None, mantenimiento_anual=None)
+        self.assertIn("Aún no está configurado el costo", self.client.get(reverse("panel:cotizacion_medida")).content.decode())
+
+    def test_crear_con_dos_piezas_y_fotos(self):
+        self.entrar()
+        datos = {"pieza": ["3", "7"], "cliente": "María", "validez_dias": "10", "descuento_extra": "5", "observaciones": "Urge"}
+        datos.update(self.post_pieza(3, nombre="Dinosaurio"))
+        datos["p3_fotos"] = [_subida("red", nombre="a.png"), _subida("blue", nombre="b.png")]
+        datos.update(self.post_pieza(7, nombre="Llavero", cantidad="3", precio="12", filamento="", peso="", horas="", minutos=""))
+        r = self.client.post(reverse("panel:cotizacion_medida"), datos)
+        cot = Cotizacion.objects.get()
+        self.assertRedirects(r, reverse("panel:cotizacion_detalle", args=[cot.pk]))
+        self.assertEqual((cot.cliente, cot.validez_dias, cot.total), ("María", 10, D("201")))   # 2×85 + 3×12 − 5
+        piezas = list(cot.items_personalizados.all())
+        self.assertEqual([p.nombre for p in piezas], ["Dinosaurio", "Llavero"])
+        self.assertEqual([p.fotos.count() for p in piezas], [2, 0])
+        self.assertIsNotNone(piezas[0].costo_estimado)
+        self.assertIsNone(piezas[1].costo_estimado)
+
+    def test_con_errores_se_conserva_lo_escrito(self):
+        self.entrar()
+        datos = {"pieza": ["1"]}
+        datos.update(self.post_pieza(1, descripcion="", precio="", nombre="Mi dinosaurio especial"))
+        r = self.client.post(reverse("panel:cotizacion_medida"), datos)
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn("escribe una descripción", html)
+        self.assertIn("escribe el precio final", html)
+        self.assertIn("Mi dinosaurio especial", html)     # vuelve a pintarse en el formulario
+        self.assertEqual(Cotizacion.objects.count(), 0)
+
+    def test_costeo_a_medias_es_un_error_claro(self):
+        self.entrar()
+        datos = {"pieza": ["1"]}
+        datos.update(self.post_pieza(1, horas="", minutos=""))
+        html = self.client.post(reverse("panel:cotizacion_medida"), datos).content.decode()
+        self.assertIn("falta el tiempo de impresión", html)
+        self.assertEqual(Cotizacion.objects.count(), 0)
+
+    def test_mas_de_seis_fotos_es_un_error(self):
+        self.entrar()
+        datos = {"pieza": ["1"]}
+        datos.update(self.post_pieza(1))
+        datos["p1_fotos"] = [_subida(nombre=f"{k}.png") for k in range(7)]
+        html = self.client.post(reverse("panel:cotizacion_medida"), datos).content.decode()
+        self.assertIn("máximo 6 fotos", html)
+        self.assertEqual(Cotizacion.objects.count(), 0)
+
+    def test_sin_piezas_no_crea_nada(self):
+        self.entrar()
+        r = self.client.post(reverse("panel:cotizacion_medida"), {"cliente": "x"})
+        self.assertIn("Agrega al menos una pieza", r.content.decode())
+        self.assertEqual(Cotizacion.objects.count(), 0)
+
+    def test_calculo_en_vivo(self):
+        self.entrar()
+        url = reverse("panel:cotizacion_medida_calcular")
+        d = self.client.post(url, {"filamento": str(self.pla.pk), "peso": "120", "horas": "6", "minutos": "30"}).json()
+        self.assertTrue(d["ok"])
+        self.assertEqual((d["material"], d["maquina"], d["fallas"], d["costo"], d["sugerido"]), (11, 7, 2, 20, 40))
+        self.assertEqual((d["fallas_pct"], d["margen_pct"], d["config_incompleta"]), ("10", "50", False))
+        vacio = self.client.post(url, {}).json()
+        self.assertEqual((vacio["ok"], vacio["vacio"]), (False, True))          # nada escrito: sin quejas
+        medias = self.client.post(url, {"peso": "50"}).json()
+        self.assertEqual((medias["ok"], medias["vacio"]), (False, False))
+        self.assertIn("filamento", medias["mensaje"])
+        self.client.logout(); self.entrar("ana")
+        self.assertEqual(self.client.post(url, {}).status_code, 403)
+        self.assertEqual(self.client.get(url).status_code, 403)   # y solo por POST
+
+
+class DetalleListaYPdfAMedidaTests(BaseAMedida):
+    def setUp(self):
+        super().setUp()
+        self.cot = servicios.crear_cotizacion_a_medida(
+            self.admin, [self.pieza(nombre="Dinosaurio azul", fotos=[_subida("red"), _subida("blue"), _subida("green")]),
+                         self.pieza(nombre="Llavero", cantidad=5, precio_unitario=D("15"), costeo=None, medidas="")],
+            cliente="María Pérez")
+
+    def pdf(self, cot=None, sin_comprimir=False):
+        from unittest import mock
+        from reportlab import rl_config
+        from .pdf import generar_pdf_cotizacion
+        if not sin_comprimir:
+            return generar_pdf_cotizacion(cot or self.cot)
+        with mock.patch.object(rl_config, "pageCompression", 0), mock.patch.object(rl_config, "useA85", 0):
+            return generar_pdf_cotizacion(cot or self.cot)
+
+    def test_el_admin_ve_el_costeo_en_el_detalle(self):
+        self.client.login(username="admin", password="x")
+        html = self.client.get(reverse("panel:cotizacion_detalle", args=[self.cot.pk])).content.decode()
+        self.assertIn("Dinosaurio azul", html)
+        self.assertIn("Costeo (interno", html)
+        self.assertIn("PLA blanco", html)
+        self.assertIn("6 h 30 min", html)
+        self.assertIn("Ganancia", html)
+        self.assertEqual(html.count('class="fotos"'), 1)              # solo la pieza con fotos
+        self.assertEqual(html.count("<img src=\"/media/cotizaciones/"), 3)
+        for rastro in ("{#", "#}", "{%"):
+            self.assertNotIn(rastro, html)
+
+    def test_un_no_admin_no_ve_costos(self):
+        otra = servicios.crear_cotizacion_a_medida(self.ana, [self.pieza(nombre="Pieza de Ana")])
+        self.client.login(username="ana", password="x")
+        html = self.client.get(reverse("panel:cotizacion_detalle", args=[otra.pk])).content.decode()
+        self.assertIn("Pieza de Ana", html)
+        self.assertNotIn("Costeo (interno", html)
+        self.assertNotIn("Sugerido", html)
+
+    def test_la_lista_las_marca_y_se_puede_buscar_por_pieza(self):
+        self.client.login(username="admin", password="x")
+        otra = servicios.crear_cotizacion(self.admin, [self.item(self.p1, None, 1)])   # una normal, del catálogo
+        html = self.client.get(reverse("panel:cotizaciones")).content.decode()
+        self.assertEqual(html.count("p-tag-medida"), 1)
+        self.assertIn("Dinosaurio azul", html)
+        self.assertIn("7 unid.", html)                                                   # 2 + 5
+        buscada = self.client.get(reverse("panel:cotizaciones"), {"q": "dinosaurio"}).content.decode()
+        self.assertIn(f"N° {self.cot.numero}", buscada)
+        self.assertNotIn(f"N° {otra.numero}", buscada)
+        por_descripcion = self.client.get(reverse("panel:cotizaciones"), {"q": "articulado"}).content.decode()
+        self.assertIn(f"N° {self.cot.numero}", por_descripcion)
+
+    def test_el_pdf_lleva_nombre_descripcion_medidas_y_todas_las_fotos(self):
+        from .pdf import generar_pdf_cotizacion
+        base = Cotizacion.objects.create(creador=self.admin, total=D("1"))
+        servicios_base = self.pdf(base).count(b"/Subtype /Image")        # solo el logo
+        pdf = self.pdf()
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertEqual(pdf.count(b"/Subtype /Image"), servicios_base + 3)
+        crudo = self.pdf(sin_comprimir=True)
+        for texto in (b"Dinosaurio azul", b"Articulado, en PLA blanco.", b"Medidas:", b"Alto 12 cm", b"Llavero", b"Bs. 245"):
+            self.assertIn(texto, crudo, texto)
+        self.assertEqual(crudo.count(b"Medidas:"), 1)                    # la pieza sin medidas no lleva la línea
+
+    def test_el_pdf_nunca_muestra_costos(self):
+        crudo = self.pdf(sin_comprimir=True)
+        self.assertIn(b"Dinosaurio azul", crudo)                          # control: así se sabe que el texto SÍ se lee
+        for secreto in (b"Costeo", b"costo", b"Costo", b"sugerido", b"Sugerido", b"Ganancia", b"Filamento", b"filamento", b"120 g"):
+            self.assertNotIn(secreto, crudo, secreto)
+
+    def test_cotizacion_solo_a_medida_no_dice_sujeta_a_disponibilidad(self):
+        crudo = self.pdf(sin_comprimir=True)
+        self.assertIn(b"Precios en bolivianos", crudo)      # control: la nota final sí está
+        self.assertNotIn(b"disponibilidad", crudo)
+
+    def test_sin_fotos_no_hay_columna_de_fotos(self):
+        solo = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza(costeo=None)])
+        base = self.pdf(Cotizacion.objects.create(creador=self.admin, total=D("1"))).count(b"/Subtype /Image")
+        self.assertEqual(self.pdf(solo).count(b"/Subtype /Image"), base)
+
+    def test_mixta_catalogo_y_a_medida_comparte_totales(self):
+        """Productos del catálogo + piezas a medida en la misma cotización: ambas tablas y un solo total."""
+        from .models import CotizacionItem, CotizacionItemPersonalizado
+        mixta = servicios.crear_cotizacion(self.admin, [self.item(self.p1, None, 2)], aplicar_reglas=False)
+        CotizacionItemPersonalizado.objects.create(cotizacion=mixta, nombre="Extra a medida", descripcion="Algo único",
+                                                    cantidad=1, precio_unitario=D("30"))
+        crudo = self.pdf(mixta, sin_comprimir=True)
+        self.assertIn(b"Pop it", crudo)
+        self.assertIn(b"Extra a medida", crudo)
+        self.assertIn(b"disponibilidad", crudo)                           # lleva productos del catálogo
+        self.client.login(username="admin", password="x")
+        html = self.client.get(reverse("panel:cotizacion_detalle", args=[mixta.pk])).content.decode()
+        self.assertIn("N° 2 · Extra a medida", html)                       # sigue la numeración (1 producto + 1 pieza)
+
+    def test_la_vista_del_pdf_responde(self):
+        self.client.login(username="admin", password="x")
+        r = self.client.get(reverse("panel:cotizacion_pdf", args=[self.cot.pk]))
+        self.assertEqual((r.status_code, r["Content-Type"]), (200, "application/pdf"))
+        self.assertTrue(r.content.startswith(b"%PDF"))
+
+    def test_una_foto_perdida_no_rompe_el_pdf(self):
+        """Si falta el archivo de una foto (disco o nube), ese PDF igual se genera."""
+        for f in self.cot.items_personalizados.first().fotos.all():
+            f.imagen.storage.delete(f.imagen.name)
+        self.assertTrue(self.pdf().startswith(b"%PDF"))
+
+    def test_descripcion_larga_con_saltos_de_linea_cabe_en_el_pdf(self):
+        larga = "\n".join(f"Línea {k}: detalle de la pieza con varias palabras para ocupar ancho." for k in range(12))
+        cot = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza(descripcion=larga, fotos=[_subida() for _ in range(6)])])
+        self.assertTrue(self.pdf(cot).startswith(b"%PDF"))
+
+    def test_caracteres_especiales_no_rompen_el_pdf(self):
+        cot = servicios.crear_cotizacion_a_medida(self.admin, [self.pieza(nombre="Rana <b>&</b> sapo", descripcion="Ñandú & «cía» <i>x</i>")])
+        crudo = self.pdf(cot, sin_comprimir=True)
+        self.assertTrue(crudo.startswith(b"%PDF"))
+        self.assertNotIn(b"<b>", crudo)                                  # el HTML escrito por el usuario no se interpreta
