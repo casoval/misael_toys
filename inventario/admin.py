@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta, VentaItem,
+    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, LoteStock, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta, VentaItem,
 )
 
 
@@ -55,9 +55,25 @@ class StockAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(LoteStock)
+class LoteStockAdmin(admin.ModelAdmin):
+    list_display = ("id", "creado", "usuario", "modo", "aplicados", "sin_cambio", "nota")
+    list_filter = ("modo",)
+    search_fields = ("nota", "usuario__username")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(MovimientoStock)
 class MovimientoStockAdmin(admin.ModelAdmin):
-    list_display = ("creado", "producto", "ubicacion", "cantidad", "tipo", "usuario", "nota")
+    list_display = ("creado", "producto", "ubicacion", "antes", "cantidad", "despues", "tipo", "usuario", "lote", "nota")
     list_filter = ("tipo", "ubicacion")
     search_fields = ("producto__codigo", "producto__nombre", "nota")
 

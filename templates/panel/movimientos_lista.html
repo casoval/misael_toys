@@ -1,0 +1,51 @@
+{% extends "panel/base_panel.html" %}
+{% block titulo %}Movimientos de stock{% endblock %}
+{% block contenido %}
+<p><a href="{% url 'panel:lotes' %}">← Lotes</a></p>
+<h1>Movimientos de stock</h1>
+<p class="p-soft">Todo lo que entró o salió del stock: cargas en lote, ingresos sueltos, ventas, anulaciones, traslados y ajustes.</p>
+
+<form class="p-filtros" method="get">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Buscar por producto, código o nota…" autocomplete="off">
+  <select name="tipo" aria-label="Tipo"><option value="">Todos los tipos</option>
+    {% for clave, etiqueta in tipos %}<option value="{{ clave }}" {% if f.tipo == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+  </select>
+  <select name="ubicacion" aria-label="Ubicación"><option value="">Todas las ubicaciones</option>
+    {% for u in ubicaciones %}<option value="{{ u.pk }}" {% if f.ubicacion == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
+  </select>
+  <select name="usuario" aria-label="Usuario"><option value="">Todos los usuarios</option>
+    {% for u in usuarios %}<option value="{{ u.pk }}" {% if f.usuario == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>{% endfor %}
+  </select>
+  <label>Desde <input type="date" name="desde" value="{{ f.desde }}"></label>
+  <label>Hasta <input type="date" name="hasta" value="{{ f.hasta }}"></label>
+  <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
+  {% if f.q or f.tipo or f.ubicacion or f.usuario or f.desde or f.hasta %}<a class="p-btn p-btn-sec" href="{% url 'panel:movimientos' %}">Limpiar</a>{% endif %}
+</form>
+
+<div class="p-kpis">
+  <div><span class="p-soft">Movimientos</span><b>{{ total }}</b></div>
+  <div><span class="p-soft">Entraron</span><b>+{{ entradas }}</b></div>
+  <div><span class="p-soft">Salieron</span><b>−{{ salidas }}</b></div>
+</div>
+{% if total > 300 %}<p class="p-soft">Se muestran los 300 más recientes de {{ total }}. Usa los filtros para acotar.</p>{% endif %}
+
+<div class="p-tabla-wrap">
+<table class="p-tabla p-tabla-lote">
+  <thead><tr><th>Fecha</th><th>Producto</th><th>Ubicación</th><th>Tipo</th><th class="t-num">Había</th><th class="t-num">Cambio</th><th class="t-num">Quedó</th><th>Quién / detalle</th></tr></thead>
+  <tbody>
+  {% for m in movs %}
+    <tr>
+      <td>{{ m.creado|date:"d/m/Y H:i" }}</td>
+      <td>{% if m.producto.codigo %}<span class="p-prod-cod">{{ m.producto.codigo }}</span> {% endif %}<a href="{% url 'panel:stock_producto' m.producto_id %}"><b>{{ m.producto.nombre }}</b></a></td>
+      <td>{{ m.ubicacion.nombre }}</td>
+      <td>{{ m.get_tipo_display }}</td>
+      <td class="t-num">{{ m.antes|default_if_none:"—" }}</td>
+      <td class="t-num {% if m.cantidad > 0 %}pos{% else %}neg{% endif %}"><b>{{ m.cantidad|stringformat:"+d" }}</b></td>
+      <td class="t-num">{{ m.despues|default_if_none:"—" }}</td>
+      <td class="p-soft">{{ m.usuario.username|default:"—" }}{% if m.lote_id %} · <a href="{% url 'panel:lote_detalle' m.lote_id %}">Entrada #{{ m.lote_id }}</a>{% endif %}{% if m.venta_id %} · <a href="{% url 'panel:venta_detalle' m.venta_id %}">Venta #{{ m.venta_id }}</a>{% endif %}{% if m.nota %}<br>{{ m.nota }}{% endif %}</td>
+    </tr>
+  {% empty %}<tr><td colspan="8" class="p-soft">No hay movimientos con esos filtros.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

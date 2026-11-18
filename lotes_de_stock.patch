@@ -1,0 +1,1374 @@
+diff --git a/README.md b/README.md
+index 91e169c..fa5b092 100644
+--- a/README.md
++++ b/README.md
+@@ -165,6 +165,23 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
+   stock negativo) o **Fijar** (conteo físico: queda esa cantidad). Incluye buscador, filtro por categoría,
+   «solo sin stock», «solo los que estoy cambiando», relleno de una columna completa con un valor, `Enter` para
+   bajar a la celda de abajo y contador de cambios.
++  - **Entradas / lotes y verificación** (solo admin, pestaña «Lotes», `/panel/lotes/`): cada «Guardar todo» (y cada ingreso suelto desde la ficha del producto) crea una **entrada** (lote)
++    (N°, fecha, quién, modo, nota). Al guardar se abre el detalle del lote con una tabla *Había → Cambio → Quedó*
++    por producto y ubicación. Antes de guardar, cada celda muestra «→ quedará X», se pide confirmación («vas a
++    SUMAR / FIJAR…») y el botón se bloquea para evitar doble envío. Los productos con **nombre repetido** (el nombre
++    no es único en el catálogo) se marcan «NOMBRE REPETIDO» y hay un filtro para encontrarlos: lo que cargas en uno
++    **no** se suma al otro. En `/panel/movimientos/` está el historial de TODOS los movimientos (ingresos, ventas,
++    traslados, ajustes) con filtros; el historial de cada producto también muestra «antes → después» y el lote.
++    **Cada entrada se imprime en PDF** (botón «🖨 Imprimir PDF», `/panel/lotes/<n>/pdf/`): N°, fecha, quién, tipo, tabla
++    Había → Cambio → Quedó, totales por ubicación y firmas; varias hojas si es larga. Es un documento interno (sí muestra
++    ubicaciones y cantidades). **Sumas en pantalla**: los chips por ubicación, el resumen «X unidades» y el pie de la tabla
++    usan ahora el mismo criterio (neto = igual que la base); lo vendido sin stock se ve aparte como «⚠ N por cubrir (hay M)».
++    Modelo: `LoteStock` (+ `MovimientoStock.lote/antes/despues`; hace falta `python manage.py migrate`).
++    **Ingresos antiguos**: la migración `0008` agrupa los ingresos y cantidades iniciales anteriores a los lotes en
++    entradas, una por **día (hora de Bolivia) + ubicación** (nota «Recreado de ingresos antiguos»). No calcula
++    «Había/Quedó» de lo antiguo (la pantalla y el PDF de esas entradas muestran solo «Cantidad»). No cambia ninguna
++    cantidad y es reversible. Para ver antes qué haría: `migrate inventario 0007` y luego
++    `python manage.py recrear_lotes_antiguos --simular`.
+ - **Más información en Stock / Vender / Cotizar**: resumen por ubicación (unidades, productos con stock, por
+   cubrir; se toca para filtrar), filtro de **estado del stock** (con stock, stock bajo (queda 1 unidad), agotado, sin stock aquí
+   pero hay en otra ubicación, agotado en todas, por cubrir), y en Stock una **vista «Tabla»** con una columna
+diff --git a/inventario/admin.py b/inventario/admin.py
+index aba8833..85f999f 100644
+--- a/inventario/admin.py
++++ b/inventario/admin.py
+@@ -1,7 +1,7 @@
+ from django.contrib import admin
+ 
+ from .models import (
+-    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta, VentaItem,
++    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, LoteStock, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta, VentaItem,
+ )
+ 
+ 
+@@ -55,9 +55,25 @@ class StockAdmin(admin.ModelAdmin):
+         return False
+ 
+ 
++@admin.register(LoteStock)
++class LoteStockAdmin(admin.ModelAdmin):
++    list_display = ("id", "creado", "usuario", "modo", "aplicados", "sin_cambio", "nota")
++    list_filter = ("modo",)
++    search_fields = ("nota", "usuario__username")
++
++    def has_add_permission(self, request):
++        return False
++
++    def has_change_permission(self, request, obj=None):
++        return False
++
++    def has_delete_permission(self, request, obj=None):
++        return False
++
++
+ @admin.register(MovimientoStock)
+ class MovimientoStockAdmin(admin.ModelAdmin):
+-    list_display = ("creado", "producto", "ubicacion", "cantidad", "tipo", "usuario", "nota")
++    list_display = ("creado", "producto", "ubicacion", "antes", "cantidad", "despues", "tipo", "usuario", "lote", "nota")
+     list_filter = ("tipo", "ubicacion")
+     search_fields = ("producto__codigo", "producto__nombre", "nota")
+ 
+diff --git a/inventario/management/__init__.py b/inventario/management/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/inventario/management/commands/__init__.py b/inventario/management/commands/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/inventario/management/commands/recrear_lotes_antiguos.py b/inventario/management/commands/recrear_lotes_antiguos.py
+new file mode 100644
+index 0000000..fb1ed95
+--- /dev/null
++++ b/inventario/management/commands/recrear_lotes_antiguos.py
+@@ -0,0 +1,34 @@
++"""Muestra (sin guardar nada) cómo se agruparían los ingresos antiguos en entradas.
++
++Uso previo a la migración 0008:
++    python manage.py migrate inventario 0007
++    python manage.py recrear_lotes_antiguos --simular
++    python manage.py migrate
++"""
++import importlib
++
++from django.core.management.base import BaseCommand
++
++from inventario.models import LoteStock, MovimientoStock, Ubicacion
++
++
++class Command(BaseCommand):
++    help = "Simula la recreación de lotes a partir de los ingresos antiguos (no guarda nada)."
++
++    def add_arguments(self, parser):
++        parser.add_argument("--simular", action="store_true", required=True,
++                            help="Obligatorio: este comando solo simula. La recreación real la hace la migración 0008.")
++
++    def handle(self, *args, **opciones):
++        modulo = importlib.import_module("inventario.migrations.0008_recrear_lotes_antiguos")
++        r = modulo.recrear_lotes(MovimientoStock, LoteStock, simular=True)
++        if not r["lotes"]:
++            self.stdout.write("No hay ingresos antiguos sin lote: no habría nada que recrear.")
++            return
++        nombres = dict(Ubicacion.objects.values_list("pk", "nombre"))
++        self.stdout.write(f"Se crearían {r['lotes']} entradas con {r['movimientos']} ingresos antiguos:")
++        for dia, ubi, n_mov, n_prod in r["detalle"][:50]:
++            self.stdout.write(f"  {dia:%d/%m/%Y} · {nombres.get(ubi, ubi)}: {n_mov} ingreso(s), {n_prod} producto(s)")
++        if len(r["detalle"]) > 50:
++            self.stdout.write(f"  … y {len(r['detalle']) - 50} más")
++        self.stdout.write("No se calcula «Había/Quedó» de lo antiguo (queda vacío); no cambia ninguna cantidad de stock.")
+diff --git a/inventario/migrations/0007_lotes_de_stock.py b/inventario/migrations/0007_lotes_de_stock.py
+new file mode 100644
+index 0000000..e166846
+--- /dev/null
++++ b/inventario/migrations/0007_lotes_de_stock.py
+@@ -0,0 +1,48 @@
++# Generated by Django 6.1.1 on 2026-11-17 13:27
++
++import django.db.models.deletion
++from django.conf import settings
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('inventario', '0006_cotizacion_a_medida'),
++        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
++    ]
++
++    operations = [
++        migrations.AddField(
++            model_name='movimientostock',
++            name='antes',
++            field=models.IntegerField(blank=True, null=True),
++        ),
++        migrations.AddField(
++            model_name='movimientostock',
++            name='despues',
++            field=models.IntegerField(blank=True, null=True),
++        ),
++        migrations.CreateModel(
++            name='LoteStock',
++            fields=[
++                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
++                ('modo', models.CharField(choices=[('sumar', 'Sumar'), ('fijar', 'Fijar (conteo)')], default='sumar', max_length=6)),
++                ('nota', models.CharField(blank=True, max_length=200)),
++                ('aplicados', models.PositiveIntegerField(default=0, help_text='Cantidades que cambiaron el stock')),
++                ('sin_cambio', models.PositiveIntegerField(default=0, help_text='Cantidades que ya eran iguales (modo fijar)')),
++                ('creado', models.DateTimeField(auto_now_add=True)),
++                ('usuario', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='lotes_stock', to=settings.AUTH_USER_MODEL)),
++            ],
++            options={
++                'verbose_name': 'Lote de stock',
++                'verbose_name_plural': 'Lotes de stock',
++                'ordering': ['-creado', '-id'],
++            },
++        ),
++        migrations.AddField(
++            model_name='movimientostock',
++            name='lote',
++            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='movimientos', to='inventario.lotestock'),
++        ),
++    ]
+diff --git a/inventario/migrations/0008_recrear_lotes_antiguos.py b/inventario/migrations/0008_recrear_lotes_antiguos.py
+new file mode 100644
+index 0000000..62dab2a
+--- /dev/null
++++ b/inventario/migrations/0008_recrear_lotes_antiguos.py
+@@ -0,0 +1,78 @@
++"""Recrea como «entradas» (lotes) los ingresos de stock hechos ANTES de existir los lotes.
++
++Regla: los movimientos de tipo «Ingreso» y «Cantidad inicial» que no pertenecen a ningún lote se agrupan por
++DÍA (hora local de Bolivia) y UBICACIÓN: cada grupo pasa a ser un lote en modo «sumar».
++
++Solo agrupa. NO calcula «Había / Quedó» de los movimientos antiguos (quedan vacíos): así la entrada se ve y se
++imprime sin riesgo de mostrar números reconstruidos que no sean fiables.
++
++No cambia ninguna cantidad de stock, ni ventas, ni otros movimientos. Es reversible.
++La lógica está en `recrear_lotes()` para poder simularla con `manage.py recrear_lotes_antiguos --simular`.
++"""
++from collections import Counter, defaultdict
++
++from django.db import migrations
++from django.utils import timezone
++
++MARCA = "Recreado de ingresos antiguos"
++TIPOS_ENTRADA = ("inicial", "ingreso")
++
++
++def recrear_lotes(MovimientoStock, LoteStock, simular=False):
++    """Devuelve un dict con el resumen. Con `simular=True` no escribe nada."""
++    grupos = defaultdict(list)  # (día local, ubicación) -> movimientos
++    pendientes = MovimientoStock.objects.filter(lote__isnull=True, tipo__in=TIPOS_ENTRADA).order_by("creado", "id")
++    for m in pendientes:
++        grupos[(timezone.localtime(m.creado).date(), m.ubicacion_id)].append(m)
++
++    # (el modelo histórico de usuario no trae USERNAME_FIELD: se usa «username», el del User estándar de Django)
++    modelo_usuario = MovimientoStock._meta.get_field("usuario").related_model
++    nombres = dict(modelo_usuario.objects.values_list("pk", "username"))
++
++    resumen = {"lotes": 0, "movimientos": 0, "detalle": []}
++    for (dia, ubi), movs in sorted(grupos.items(), key=lambda g: (g[0][0], g[0][1])):
++        usuarios = Counter(m.usuario_id for m in movs if m.usuario_id)
++        nota = MARCA
++        if len(usuarios) > 1:
++            nota += " · registraron: " + ", ".join(nombres.get(u, "?") for u, _ in usuarios.most_common())
++        resumen["lotes"] += 1
++        resumen["movimientos"] += len(movs)
++        resumen["detalle"].append((dia, ubi, len(movs), len({m.producto_id for m in movs})))
++        if simular:
++            continue
++
++        lote = LoteStock.objects.create(
++            usuario_id=usuarios.most_common(1)[0][0] if usuarios else None,
++            modo="sumar", nota=nota[:200], aplicados=len(movs), sin_cambio=0,
++        )
++        # `creado` es automático al crear: se corrige para que sea la hora del primer ingreso del grupo.
++        LoteStock.objects.filter(pk=lote.pk).update(creado=movs[0].creado)
++        MovimientoStock.objects.filter(pk__in=[m.pk for m in movs]).update(lote=lote.pk)
++    return resumen
++
++
++def adelante(apps, schema_editor):
++    MovimientoStock = apps.get_model("inventario", "MovimientoStock")
++    LoteStock = apps.get_model("inventario", "LoteStock")
++    r = recrear_lotes(MovimientoStock, LoteStock)
++    if r["lotes"]:
++        print(f"\n    {r['lotes']} entradas recreadas con {r['movimientos']} ingresos antiguos", end="")
++
++
++def atras(apps, schema_editor):
++    MovimientoStock = apps.get_model("inventario", "MovimientoStock")
++    LoteStock = apps.get_model("inventario", "LoteStock")
++    mias = LoteStock.objects.filter(nota__startswith=MARCA)
++    MovimientoStock.objects.filter(lote__in=mias).update(lote=None)
++    mias.delete()
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ("inventario", "0007_lotes_de_stock"),
++    ]
++
++    operations = [
++        migrations.RunPython(adelante, atras),
++    ]
+diff --git a/inventario/models.py b/inventario/models.py
+index f015359..dba3798 100644
+--- a/inventario/models.py
++++ b/inventario/models.py
+@@ -82,6 +82,32 @@ class Stock(models.Model):
+         return f"{self.producto} @ {self.ubicacion}: {self.cantidad}"
+ 
+ 
++class LoteStock(models.Model):
++    """Una carga de stock en lote (una sola vez que se toca «Guardar todo»).
++
++    Agrupa todos los movimientos que produjo, para poder revisarla después: quién la hizo,
++    cuándo, en qué modo (sumar / fijar), la nota y qué cantidad quedó en cada producto."""
++
++    SUMAR = "sumar"
++    FIJAR = "fijar"
++    MODOS = [(SUMAR, "Sumar"), (FIJAR, "Fijar (conteo)")]
++
++    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="lotes_stock")
++    modo = models.CharField(max_length=6, choices=MODOS, default=SUMAR)
++    nota = models.CharField(max_length=200, blank=True)
++    aplicados = models.PositiveIntegerField(default=0, help_text="Cantidades que cambiaron el stock")
++    sin_cambio = models.PositiveIntegerField(default=0, help_text="Cantidades que ya eran iguales (modo fijar)")
++    creado = models.DateTimeField(auto_now_add=True)
++
++    class Meta:
++        verbose_name = "Lote de stock"
++        verbose_name_plural = "Lotes de stock"
++        ordering = ["-creado", "-id"]
++
++    def __str__(self):
++        return f"Lote #{self.pk} ({self.get_modo_display()})"
++
++
+ class MovimientoStock(models.Model):
+     """Historial de cada cambio de stock (quién, cuándo, por qué).
+     `cantidad` es con signo: positivo entra, negativo sale."""
+@@ -108,6 +134,10 @@ class MovimientoStock(models.Model):
+     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+     nota = models.CharField(max_length=250, blank=True)
+     venta = models.ForeignKey("Venta", null=True, blank=True, on_delete=models.SET_NULL, related_name="movimientos")
++    lote = models.ForeignKey(LoteStock, null=True, blank=True, on_delete=models.SET_NULL, related_name="movimientos")
++    # Lo que había y lo que quedó en esa ubicación (nulos en movimientos anteriores a este cambio).
++    antes = models.IntegerField(null=True, blank=True)
++    despues = models.IntegerField(null=True, blank=True)
+     creado = models.DateTimeField(auto_now_add=True)
+ 
+     class Meta:
+diff --git a/inventario/pdf.py b/inventario/pdf.py
+index cdbafb6..de4a1af 100644
+--- a/inventario/pdf.py
++++ b/inventario/pdf.py
+@@ -1,6 +1,7 @@
+-"""PDFs del panel: cotización (para el cliente) y recibo de venta (respaldo).
++"""PDFs del panel: cotización (para el cliente), recibo de venta (respaldo) y entrada de productos (interno).
+ 
+-Importante: ninguno incluye stock ni ubicaciones, solo lo que un cliente puede ver.
++Importante: la cotización y el recibo no incluyen stock ni ubicaciones (solo lo que un cliente puede ver);
++el PDF de entrada de productos es de uso INTERNO y sí muestra ubicaciones y cantidades.
+ Todo el dinero va en enteros (sin decimales)."""
+ import logging
+ import urllib.request
+@@ -542,3 +543,74 @@ def generar_pdf_recibo(venta):
+     extra = {"canvasmaker": _canvas_con_marca("ANULADA")} if venta.anulada else {}
+     doc.build([marco], onFirstPage=pie, onLaterPages=pie, **extra)
+     return buf.getvalue()
++
++
++# --------------------------------------------------------------------------
++# Entrada de productos (lote de stock) — documento INTERNO
++# --------------------------------------------------------------------------
++def generar_pdf_lote(lote):
++    """PDF de una entrada de productos: cabecera con N°, fecha, quién y modo; tabla con producto,
++    ubicación, lo que había, el cambio y lo que quedó; totales por ubicación y líneas de firma.
++    Puede tener muchas filas: se reparte en varias hojas (la cabecera de la tabla se repite)."""
++    config = ConfiguracionSitio.get()
++    st = _estilos()
++    buf = BytesIO()
++    numero = f"{lote.pk:05d}"
++    doc = _documento(buf, f"Entrada de productos {numero}", config)
++
++    el = [_cabecera(config, st, logo_alto_mm=26, logo_ancho_mm=40), Spacer(1, 4 * mm)]
++    fecha = timezone.localtime(lote.creado)
++    el += [Paragraph(f"ENTRADA DE PRODUCTOS N° {numero}", st["titulo"]), Spacer(1, 2 * mm)]
++    modo = "Conteo físico (la cantidad quedó fijada)" if lote.modo == lote.FIJAR else "Suma al stock actual"
++    datos = [f"Fecha: {fecha:%d/%m/%Y}  ·  Hora: {fecha:%H:%M}",
++             f"Registró: <b>{_esc(lote.usuario.username) if lote.usuario else '—'}</b>",
++             f"Tipo: <b>{modo}</b>"]
++    if lote.nota:
++        datos.append(f"Nota: {_esc(lote.nota)}")
++    el += [Paragraph("<br/>".join(datos), st["normal"]), Spacer(1, 4 * mm)]
++
++    movs = list(lote.movimientos.select_related("producto", "ubicacion").order_by("producto__nombre", "ubicacion__orden"))
++    con_saldos = any(m.antes is not None for m in movs)  # las entradas antiguas recreadas no traen Había/Quedó
++    encabezado = ["N°", "Cód.", "Producto", "Ubicación"] + (["Había", "Cambio", "Quedó"] if con_saldos else ["Cantidad"])
++    filas = [encabezado]
++    por_ubicacion = {}
++    for n, m in enumerate(movs, start=1):
++        fila = [str(n), m.producto.codigo or "—", Paragraph(_esc(m.producto.nombre), st["normal"]),
++                Paragraph(_esc(m.ubicacion.nombre), st["normal"])]
++        fila += ([str(m.antes) if m.antes is not None else "—", f"{m.cantidad:+d}",
++                  str(m.despues) if m.despues is not None else "—"] if con_saldos else [f"{m.cantidad:+d}"])
++        filas.append(fila)
++        por_ubicacion[m.ubicacion.nombre] = por_ubicacion.get(m.ubicacion.nombre, 0) + m.cantidad
++    if not movs:
++        filas.append(["", "", Paragraph("Sin movimientos (todo ya tenía esas cantidades).", st["chico"])] + [""] * (len(encabezado) - 3))
++    anchos = ([9 * mm, 17 * mm, 58 * mm, 31 * mm, 18 * mm, 18 * mm, 18 * mm] if con_saldos
++              else [10 * mm, 20 * mm, 85 * mm, 36 * mm, 18 * mm])
++    tabla = _tabla_items(filas, anchos)
++    tabla.setStyle(TableStyle([("ALIGN", (0, 0), (1, -1), "CENTER"), ("ALIGN", (2, 0), (3, -1), "LEFT"),
++                               ("FONTNAME", (4, 1), (-1, -1), "Helvetica-Bold") if not con_saldos
++                               else ("FONTNAME", (5, 1), (6, -1), "Helvetica-Bold")]))
++    el += [tabla, Spacer(1, 4 * mm)]
++
++    total = sum(m.cantidad for m in movs)
++    resumen = [[Paragraph(f"<b>Productos:</b> {len({m.producto_id for m in movs})}", st["normal"]),
++                Paragraph(f"<b>Cantidades:</b> {len(movs)}", st["normal"]),
++                Paragraph(f"<b>{'Diferencia neta' if lote.modo == lote.FIJAR else 'Total de unidades'}:</b> {total:+d}", st["normal"])]]
++    for nombre, u in por_ubicacion.items():
++        resumen.append([Paragraph(f"{_esc(nombre)}", st["normal"]), "", Paragraph(f"{u:+d} unid.", st["normal"])])
++    r = Table(resumen, colWidths=[60 * mm, 40 * mm, 69 * mm])
++    r.setStyle(TableStyle([("LINEABOVE", (0, 0), (-1, 0), 1, TEAL), ("TOPPADDING", (0, 0), (-1, -1), 2),
++                           ("BOTTOMPADDING", (0, 0), (-1, -1), 2), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
++    el += [KeepTogether([r])]
++
++    firmas = Table(
++        [["", "", ""], [Paragraph("Entregado por", st["chico"]), "", Paragraph("Recibido / verificado por", st["chico"])]],
++        colWidths=[70 * mm, 29 * mm, 70 * mm], rowHeights=[14 * mm, 5 * mm],
++    )
++    firmas.setStyle(TableStyle([("LINEBELOW", (0, 0), (0, 0), 0.6, SOFT), ("LINEBELOW", (2, 0), (2, 0), 0.6, SOFT),
++                                ("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 1)]))
++    el += [Spacer(1, 8 * mm), KeepTogether([firmas, Spacer(1, 4 * mm),
++           Paragraph("Documento interno de control de inventario.", st["chico"])])]
++
++    pie = _dibujar_pie(config)
++    doc.build(el, onFirstPage=pie, onLaterPages=pie)
++    return buf.getvalue()
+diff --git a/inventario/servicios.py b/inventario/servicios.py
+index c2f9a92..749fb16 100644
+--- a/inventario/servicios.py
++++ b/inventario/servicios.py
+@@ -9,7 +9,7 @@ from django.db import transaction
+ from django.utils import timezone
+ 
+ from .models import (
+-    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, MovimientoStock,
++    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, LoteStock, MovimientoStock,
+     ReglaDescuento, Stock, Venta, VentaItem,
+ )
+ 
+@@ -143,7 +143,7 @@ def _stock_bloqueado(producto, ubicacion):
+ 
+ 
+ @transaction.atomic
+-def mover_stock(producto, ubicacion, delta, tipo, usuario=None, nota="", venta=None, permitir_negativo=False):
++def mover_stock(producto, ubicacion, delta, tipo, usuario=None, nota="", venta=None, permitir_negativo=False, lote=None):
+     """Suma/resta stock en una ubicación y deja el rastro en el historial.
+     Solo las ventas pueden dejar el stock en negativo (`permitir_negativo`)."""
+     if delta == 0:
+@@ -157,21 +157,22 @@ def mover_stock(producto, ubicacion, delta, tipo, usuario=None, nota="", venta=N
+             f"No hay suficiente «{producto.nombre}» en {ubicacion.nombre} "
+             f"(hay {stock.cantidad}, se pidió {-delta})."
+         )
++    antes = stock.cantidad
+     stock.cantidad += delta
+     stock.save(update_fields=["cantidad"])
+     return MovimientoStock.objects.create(
+         producto=producto, ubicacion=ubicacion, cantidad=delta, tipo=tipo,
+-        usuario=usuario, nota=nota, venta=venta,
++        usuario=usuario, nota=nota, venta=venta, lote=lote, antes=antes, despues=stock.cantidad,
+     )
+ 
+ 
+-def registrar_ingreso(producto, ubicacion, cantidad, usuario, nota=""):
++def registrar_ingreso(producto, ubicacion, cantidad, usuario, nota="", lote=None):
+     """Primer ingreso en un lugar = 'cantidad inicial'; los siguientes = 'ingreso'."""
+     if cantidad <= 0:
+         raise ErrorNegocio("La cantidad debe ser mayor que 0.")
+     es_inicial = not MovimientoStock.objects.filter(producto=producto, ubicacion=ubicacion).exists()
+     tipo = MovimientoStock.INICIAL if es_inicial else MovimientoStock.INGRESO
+-    return mover_stock(producto, ubicacion, cantidad, tipo, usuario, nota)
++    return mover_stock(producto, ubicacion, cantidad, tipo, usuario, nota, lote=lote)
+ 
+ 
+ @transaction.atomic
+@@ -184,7 +185,7 @@ def trasladar(producto, origen, destino, cantidad, usuario, nota=""):
+     mover_stock(producto, destino, cantidad, MovimientoStock.TRASLADO, usuario, f"Desde {origen.nombre}. {nota}".strip())
+ 
+ 
+-def ajustar(producto, ubicacion, nueva_cantidad, usuario, nota=""):
++def ajustar(producto, ubicacion, nueva_cantidad, usuario, nota="", lote=None):
+     """Corrige el stock a un número exacto (conteo físico, roturas, etc.)."""
+     if nueva_cantidad < 0:
+         raise ErrorNegocio("La cantidad no puede ser negativa.")
+@@ -194,7 +195,7 @@ def ajustar(producto, ubicacion, nueva_cantidad, usuario, nota=""):
+         if delta == 0:
+             raise ErrorNegocio("Esa ya es la cantidad registrada.")
+         return mover_stock(producto, ubicacion, delta, MovimientoStock.AJUSTE, usuario,
+-                           f"Ajuste de {actual} a {nueva_cantidad}. {nota}".strip())
++                           f"Ajuste de {actual} a {nueva_cantidad}. {nota}".strip(), lote=lote)
+ 
+ 
+ def repartir_total(pesos, total):
+@@ -216,18 +217,33 @@ def repartir_total(pesos, total):
+ 
+ 
+ @transaction.atomic
+-def carga_masiva(cambios, modo, usuario, nota=""):
++def carga_masiva(cambios, modo, usuario, nota="", origen=None):
+     """Carga de stock de muchos productos a la vez.
+ 
+     `cambios`: lista de (producto, ubicacion, cantidad).
+     `modo`: "sumar" (ingreso: la cantidad se suma) o "fijar" (conteo: queda esa cantidad exacta).
+-    Todo o nada: si algo falla, no se guarda nada. Devuelve (aplicados, sin_cambio).
+-    Cada movimiento queda en el historial igual que si se hiciera uno por uno."""
+-    aplicados = sin_cambio = 0
++    Todo o nada: si algo falla, no se guarda nada. Devuelve el `LoteStock` creado, que agrupa todos los
++    movimientos (cada uno con lo que había antes y lo que quedó después) para poder revisarlo luego.
++
++    Si el mismo producto y ubicación vienen repetidos en `cambios`, en modo «sumar» se SUMAN entre sí
++    (se juntan en un solo movimiento); en modo «fijar» vale el último valor."""
++    modo = LoteStock.FIJAR if modo == "fijar" else LoteStock.SUMAR
++    etiqueta = origen or ("Conteo en lote" if modo == LoteStock.FIJAR else "Carga en lote")
++    lote = LoteStock.objects.create(usuario=usuario, modo=modo, nota=(nota or "")[:200])
++
++    juntos = {}  # (producto, ubicacion) -> cantidad; conserva el orden de llegada
+     for producto, ubicacion, cantidad in cambios:
+-        if modo == "fijar":
++        clave = (producto.pk, ubicacion.pk)
++        if clave in juntos and modo == LoteStock.SUMAR:
++            juntos[clave] = (producto, ubicacion, juntos[clave][2] + cantidad)
++        else:
++            juntos[clave] = (producto, ubicacion, cantidad)
++
++    aplicados = sin_cambio = 0
++    for producto, ubicacion, cantidad in juntos.values():
++        if modo == LoteStock.FIJAR:
+             try:
+-                ajustar(producto, ubicacion, cantidad, usuario, f"Conteo en lote. {nota}".strip())
++                ajustar(producto, ubicacion, cantidad, usuario, f"{etiqueta} #{lote.pk}. {nota}".strip(), lote=lote)
+                 aplicados += 1
+             except ErrorNegocio as e:
+                 if "ya es la cantidad" in str(e):
+@@ -235,9 +251,11 @@ def carga_masiva(cambios, modo, usuario, nota=""):
+                 else:
+                     raise
+         else:
+-            registrar_ingreso(producto, ubicacion, cantidad, usuario, f"Carga en lote. {nota}".strip())
++            registrar_ingreso(producto, ubicacion, cantidad, usuario, f"{etiqueta} #{lote.pk}. {nota}".strip(), lote=lote)
+             aplicados += 1
+-    return aplicados, sin_cambio
++    lote.aplicados, lote.sin_cambio = aplicados, sin_cambio
++    lote.save(update_fields=["aplicados", "sin_cambio"])
++    return lote
+ 
+ 
+ # --------------------------------------------------------------------------
+diff --git a/inventario/tests.py b/inventario/tests.py
+index 9d82cb1..5a5e68f 100644
+--- a/inventario/tests.py
++++ b/inventario/tests.py
+@@ -14,7 +14,7 @@ from django.utils import timezone
+ from catalogo.models import Atributo, Categoria, ImagenProducto, Producto, ValorAtributo
+ 
+ from . import catalogo_pdf, servicios
+-from .models import Cotizacion, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta
++from .models import Cotizacion, LoteStock, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta
+ from .servicios import ErrorNegocio
+ 
+ User = get_user_model()
+@@ -1282,7 +1282,8 @@ class CargaMasivaTests(Base):
+         r = self.post({"modo": "sumar", "nota": "lote 1",
+                        f"c_{self.p1.pk}_{self.casa.pk}": "5", f"c_{self.p1.pk}_{self.local.pk}": "3",
+                        f"c_{self.p2.pk}_{self.casa.pk}": "10", f"c_{self.p2.pk}_{self.local.pk}": ""})
+-        self.assertRedirects(r, reverse("panel:stock"))
++        lote = LoteStock.objects.get()
++        self.assertRedirects(r, reverse("panel:lote_detalle", args=[lote.pk]))
+         self.assertEqual(self.stock(self.p1, self.casa), 7)
+         self.assertEqual(self.stock(self.p1, self.local), 3)
+         self.assertEqual(self.stock(self.p2, self.casa), 10)
+@@ -1290,6 +1291,7 @@ class CargaMasivaTests(Base):
+         m = MovimientoStock.objects.filter(producto=self.p2).get()
+         self.assertEqual((m.tipo, m.usuario), (MovimientoStock.INICIAL, self.admin))
+         self.assertIn("lote 1", m.nota)
++        self.assertEqual(m.lote, lote)
+         self.assertEqual(MovimientoStock.objects.filter(producto=self.p1, tipo=MovimientoStock.INGRESO).count(), 1)
+ 
+     def test_sumar_compensa_stock_negativo(self):
+@@ -1330,6 +1332,128 @@ class CargaMasivaTests(Base):
+         self.assertEqual(r.status_code, 302)
+         self.assertEqual(self.stock(self.p1, self.casa), 1)
+ 
++    def test_cargas_sucesivas_del_mismo_producto_se_acumulan(self):
++        k = f"c_{self.p1.pk}_{self.casa.pk}"
++        for esperado in (5, 10, 15):
++            self.post({"modo": "sumar", k: "5"})
++            self.assertEqual(self.stock(self.p1, self.casa), esperado)
++        self.assertEqual(LoteStock.objects.count(), 3)
++
++    def test_mismo_producto_y_ubicacion_repetido_en_un_lote_se_suma(self):
++        lote = servicios.carga_masiva(
++            [(self.p1, self.casa, 5), (self.p1, self.casa, 3), (self.p2, self.casa, 1)], "sumar", self.admin)
++        self.assertEqual(self.stock(self.p1, self.casa), 8)
++        self.assertEqual(lote.aplicados, 2)
++        self.assertEqual(lote.movimientos.filter(producto=self.p1).count(), 1)
++
++    def test_movimientos_guardan_antes_y_despues(self):
++        servicios.registrar_ingreso(self.p1, self.casa, 4, self.admin)
++        self.post({"modo": "sumar", f"c_{self.p1.pk}_{self.casa.pk}": "6"})
++        m = MovimientoStock.objects.filter(lote__isnull=False).get()
++        self.assertEqual((m.antes, m.cantidad, m.despues), (4, 6, 10))
++        self.post({"modo": "fijar", f"c_{self.p1.pk}_{self.casa.pk}": "3"})
++        m = MovimientoStock.objects.filter(tipo=MovimientoStock.AJUSTE).get()
++        self.assertEqual((m.antes, m.despues), (10, 3))
++
++    def test_lote_registra_modo_usuario_y_sin_cambio(self):
++        servicios.registrar_ingreso(self.p2, self.casa, 4, self.admin)
++        self.post({"modo": "fijar", "nota": "conteo", f"c_{self.p2.pk}_{self.casa.pk}": "4",
++                   f"c_{self.p1.pk}_{self.casa.pk}": "2"})
++        lote = LoteStock.objects.get()
++        self.assertEqual((lote.modo, lote.usuario, lote.nota, lote.aplicados, lote.sin_cambio),
++                         ("fijar", self.admin, "conteo", 1, 1))
++
++    def test_lista_y_detalle_de_lotes_solo_admin(self):
++        lote = servicios.carga_masiva([(self.p1, self.casa, 5)], "sumar", self.admin, "octubre")
++        self.client.force_login(self.admin)
++        r = self.client.get(reverse("panel:lotes"))
++        self.assertContains(r, f"Entrada #{lote.pk}")
++        self.assertContains(r, "octubre")
++        r = self.client.get(reverse("panel:lote_detalle", args=[lote.pk]))
++        self.assertContains(r, "Pop it")
++        self.assertContains(r, "+5")
++        self.assertEqual(self.client.get(reverse("panel:lotes") + "?q=Pop").status_code, 200)
++        self.assertContains(self.client.get(reverse("panel:lotes") + "?q=Cubo"), "No hay lotes")
++        self.client.force_login(self.ana)
++        for nombre, args in (("lotes", []), ("lote_detalle", [lote.pk]), ("lote_pdf", [lote.pk]), ("movimientos", [])):
++            self.assertEqual(self.client.get(reverse(f"panel:{nombre}", args=args)).status_code, 403)
++
++    def test_movimientos_filtra_y_muestra_lote(self):
++        lote = servicios.carga_masiva([(self.p1, self.casa, 5)], "sumar", self.admin)
++        servicios.registrar_ingreso(self.p2, self.local, 2, self.admin)
++        self.client.force_login(self.admin)
++        r = self.client.get(reverse("panel:movimientos"))
++        self.assertContains(r, f"Entrada #{lote.pk}")
++        self.assertContains(r, "Cubo")
++        r = self.client.get(reverse("panel:movimientos") + "?q=Cubo")
++        self.assertContains(r, "Cubo")
++        self.assertNotContains(r, "Pop it")
++        self.assertEqual(self.client.get(reverse("panel:movimientos") + "?desde=basura&tipo=x&ubicacion=y").status_code, 200)
++
++    def test_marca_y_avisa_nombres_repetidos(self):
++        dup = Producto.objects.create(nombre="  pop IT ", precio=D("10"), categoria=self.cat)
++        self.client.force_login(self.admin)
++        r = self.client.get(reverse("panel:stock_carga"))
++        self.assertContains(r, "NOMBRE REPETIDO")
++        self.assertContains(r, "data-c-repetidos")
++        r = self.client.post(reverse("panel:stock_carga"), {"modo": "sumar", f"c_{dup.pk}_{self.casa.pk}": "2"}, follow=True)
++        self.assertContains(r, "MISMO nombre")
++        self.assertEqual(self.stock(dup, self.casa), 2)
++        self.assertEqual(self.stock(self.p1, self.casa), 0)
++
++    def test_sin_repetidos_no_hay_marca(self):
++        self.client.force_login(self.admin)
++        self.assertNotContains(self.client.get(reverse("panel:stock_carga")), "NOMBRE REPETIDO")
++
++    def test_pdf_de_la_entrada(self):
++        lote = servicios.carga_masiva([(self.p1, self.casa, 5), (self.p2, self.local, 3)], "sumar", self.admin, "octubre")
++        self.client.force_login(self.admin)
++        r = self.client.get(reverse("panel:lote_pdf", args=[lote.pk]))
++        self.assertEqual(r.status_code, 200)
++        self.assertEqual(r["Content-Type"], "application/pdf")
++        self.assertIn("entrada-%05d.pdf" % lote.pk, r["Content-Disposition"])
++        self.assertTrue(r.content.startswith(b"%PDF"))
++        self.assertContains(self.client.get(reverse("panel:lote_detalle", args=[lote.pk])), reverse("panel:lote_pdf", args=[lote.pk]))
++        self.assertContains(self.client.get(reverse("panel:lotes")), reverse("panel:lote_pdf", args=[lote.pk]))
++
++    def test_pdf_con_muchas_filas_usa_varias_hojas_y_modo_fijar(self):
++        productos = [Producto.objects.create(nombre=f"Juguete {i}", precio=D("5")) for i in range(120)]
++        lote = servicios.carga_masiva([(p, self.casa, i + 1) for i, p in enumerate(productos)], "sumar", self.admin)
++        self.client.force_login(self.admin)
++        pdf = self.client.get(reverse("panel:lote_pdf", args=[lote.pk])).content
++        self.assertGreater(pdf.count(b"/Type /Page\n"), 1)
++        vacio = servicios.carga_masiva([(productos[0], self.casa, 1)], "fijar", self.admin)  # ya era 1: sin movimientos
++        self.assertEqual(vacio.sin_cambio, 1)
++        self.assertEqual(self.client.get(reverse("panel:lote_pdf", args=[vacio.pk])).status_code, 200)
++
++    def test_ingreso_suelto_queda_como_entrada_imprimible(self):
++        self.client.force_login(self.admin)
++        r = self.client.post(reverse("panel:stock_ingreso", args=[self.p1.pk]),
++                             {"ubicacion": self.casa.pk, "cantidad": "7", "nota": "regalo"})
++        lote = LoteStock.objects.get()
++        self.assertRedirects(r, reverse("panel:lote_detalle", args=[lote.pk]))
++        self.assertEqual(self.stock(self.p1, self.casa), 7)
++        m = lote.movimientos.get()
++        self.assertEqual((m.tipo, m.antes, m.despues), (MovimientoStock.INICIAL, 0, 7))
++        self.assertIn("Ingreso #", m.nota)
++        self.assertEqual(self.client.get(reverse("panel:lote_pdf", args=[lote.pk])).status_code, 200)
++        # una cantidad inválida no deja ninguna entrada a medias
++        r = self.client.post(reverse("panel:stock_ingreso", args=[self.p1.pk]), {"ubicacion": self.casa.pk, "cantidad": "0"})
++        self.assertEqual(LoteStock.objects.count(), 1)
++
++    def test_las_sumas_que_se_ven_coinciden_con_la_base(self):
++        servicios.registrar_venta(self.ana, [self.item(self.p2, self.casa, 3)])      # p2 queda en -3 (por cubrir)
++        servicios.carga_masiva([(self.p1, self.casa, 5), (self.p1, self.local, 2)], "sumar", self.admin)
++        self.client.force_login(self.admin)
++        r = self.client.get(reverse("panel:stock"))
++        por_ub = {x["ubicacion"].nombre: x for x in r.context["resumen_ub"]}
++        self.assertEqual(por_ub["Casa"]["unidades"], 5 - 3)        # neto = lo que dice la base
++        self.assertEqual(por_ub["Casa"]["disponibles"], 5)
++        self.assertEqual(por_ub["Casa"]["por_cubrir"], 3)
++        self.assertEqual(por_ub["Local"]["unidades"], 2)
++        real = sum(st.cantidad for st in Stock.objects.filter(ubicacion=self.casa))
++        self.assertEqual(por_ub["Casa"]["unidades"], real)
++
+     def test_boton_de_carga_solo_para_admin(self):
+         self.client.force_login(self.admin)
+         self.assertContains(self.client.get(reverse("panel:stock")), reverse("panel:stock_carga"))
+@@ -1337,6 +1461,150 @@ class CargaMasivaTests(Base):
+         self.assertNotContains(self.client.get(reverse("panel:stock")), reverse("panel:stock_carga"))
+ 
+ 
++class RecrearLotesAntiguosTests(Base):
++    """Migración 0008: ingresos antiguos (sin lote) → entradas por día local + ubicación."""
++
++    def setUp(self):
++        super().setUp()
++        import importlib
++        self.mod = importlib.import_module("inventario.migrations.0008_recrear_lotes_antiguos")
++
++    def antiguo(self, producto, ubicacion, cantidad, cuando, tipo="ingreso", usuario=None, sin_stock=False):
++        """Crea un movimiento «como los de antes»: sin lote ni antes/después, con fecha elegida."""
++        from datetime import datetime
++        from zoneinfo import ZoneInfo
++        m = MovimientoStock.objects.create(producto=producto, ubicacion=ubicacion, cantidad=cantidad, tipo=tipo,
++                                           usuario=usuario or self.admin)
++        fecha = datetime.fromisoformat(cuando).replace(tzinfo=ZoneInfo("America/La_Paz"))
++        MovimientoStock.objects.filter(pk=m.pk).update(creado=fecha)
++        if not sin_stock:
++            s, _ = Stock.objects.get_or_create(producto=producto, ubicacion=ubicacion)
++            Stock.objects.filter(pk=s.pk).update(cantidad=s.cantidad + cantidad)
++        return MovimientoStock.objects.get(pk=m.pk)
++
++    def correr(self, simular=False):
++        return self.mod.recrear_lotes(MovimientoStock, LoteStock, simular=simular)
++
++    def test_agrupa_por_dia_y_ubicacion(self):
++        a = self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00", "inicial")
++        b = self.antiguo(self.p2, self.casa, 3, "2026-10-01T15:00")          # mismo día y lugar → mismo lote
++        c = self.antiguo(self.p1, self.local, 2, "2026-10-01T10:00", "inicial")  # otro lugar → otro lote
++        d = self.antiguo(self.p1, self.casa, 4, "2026-10-02T09:00")          # otro día → otro lote
++        r = self.correr()
++        self.assertEqual((r["lotes"], r["movimientos"]), (3, 4))
++        for m in (a, b, c, d):
++            m.refresh_from_db()
++        self.assertEqual(a.lote, b.lote)
++        self.assertNotEqual(a.lote, c.lote)
++        self.assertNotEqual(a.lote, d.lote)
++        lote = a.lote
++        self.assertEqual((lote.modo, lote.aplicados, lote.sin_cambio), ("sumar", 2, 0))
++        self.assertTrue(lote.nota.startswith(self.mod.MARCA))
++        self.assertEqual(lote.creado, a.creado)  # la hora del primer ingreso, no la de la migración
++        self.assertEqual(lote.usuario, self.admin)
++
++    def test_el_dia_es_el_local_de_bolivia_no_utc(self):
++        # 23:30 en La Paz = 03:30 UTC del día siguiente; debe agruparse con el resto del 1 de octubre
++        a = self.antiguo(self.p1, self.casa, 5, "2026-10-01T08:00")
++        b = self.antiguo(self.p2, self.casa, 3, "2026-10-01T23:30")
++        self.correr()
++        a.refresh_from_db(); b.refresh_from_db()
++        self.assertEqual(a.lote, b.lote)
++
++    def test_solo_agrupa_ingresos_y_no_toca_el_stock(self):
++        self.antiguo(self.p1, self.casa, 10, "2026-10-01T09:00", "inicial")
++        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 4)])
++        servicios.trasladar(self.p1, self.casa, self.local, 2, self.admin)
++        servicios.ajustar(self.p1, self.casa, 3, self.admin)
++        antes_stock = {(s.producto_id, s.ubicacion_id): s.cantidad for s in Stock.objects.all()}
++        n_mov = MovimientoStock.objects.count()
++        r = self.correr()
++        self.assertEqual(r["movimientos"], 1)                       # solo el inicial
++        self.assertEqual(MovimientoStock.objects.count(), n_mov)    # no se crean ni borran movimientos
++        self.assertEqual({(s.producto_id, s.ubicacion_id): s.cantidad for s in Stock.objects.all()}, antes_stock)
++        self.assertFalse(MovimientoStock.objects.exclude(tipo__in=("inicial", "ingreso")).filter(lote__isnull=False).exists())
++
++    def test_los_antiguos_quedan_sin_habia_y_quedo(self):
++        a = self.antiguo(self.p1, self.casa, 10, "2026-10-01T09:00", "inicial")
++        self.correr()
++        a.refresh_from_db()
++        self.assertIsNotNone(a.lote)
++        self.assertEqual((a.antes, a.despues), (None, None))
++        self.assertEqual(self.stock(self.p1, self.casa), 10)
++
++    def test_entrada_sin_saldos_oculta_esas_columnas_en_pantalla_y_pdf(self):
++        self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00", "inicial")
++        self.correr()
++        lote = LoteStock.objects.get()
++        self.client.force_login(self.admin)
++        r = self.client.get(reverse("panel:lote_detalle", args=[lote.pk]))
++        self.assertFalse(r.context["con_saldos"])
++        self.assertNotContains(r, "Había")
++        self.assertNotContains(r, "Quedó")
++        self.assertContains(r, "Cantidad")
++        pdf = self.client.get(reverse("panel:lote_pdf", args=[lote.pk]))
++        self.assertEqual((pdf.status_code, pdf.content[:4]), (200, b"%PDF"))
++        # una entrada nueva (con saldos) sí los muestra
++        nueva = servicios.carga_masiva([(self.p2, self.casa, 2)], "sumar", self.admin)
++        r = self.client.get(reverse("panel:lote_detalle", args=[nueva.pk]))
++        self.assertTrue(r.context["con_saldos"])
++        self.assertContains(r, "Quedó")
++
++    def test_varios_usuarios_quedan_anotados(self):
++        self.antiguo(self.p1, self.casa, 1, "2026-10-01T09:00", usuario=self.ana)
++        self.antiguo(self.p2, self.casa, 1, "2026-10-01T10:00", usuario=self.ana)
++        self.antiguo(self.p2, self.casa, 1, "2026-10-01T11:00", usuario=self.admin)
++        self.correr()
++        lote = LoteStock.objects.get()
++        self.assertEqual(lote.usuario, self.ana)        # el que más ingresó
++        self.assertIn("ana", lote.nota)
++        self.assertIn("admin", lote.nota)
++
++    def test_simular_no_escribe_y_repetir_no_duplica(self):
++        self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00")
++        r = self.correr(simular=True)
++        self.assertEqual(r["lotes"], 1)
++        self.assertEqual(LoteStock.objects.count(), 0)
++        self.correr()
++        self.assertEqual(LoteStock.objects.count(), 1)
++        self.assertEqual(self.correr()["lotes"], 0)      # ya no quedan ingresos sueltos
++        self.assertEqual(LoteStock.objects.count(), 1)
++
++    def test_no_toca_los_lotes_nuevos(self):
++        servicios.carga_masiva([(self.p1, self.casa, 5)], "sumar", self.admin)
++        self.assertEqual(self.correr()["lotes"], 0)
++        self.assertEqual(LoteStock.objects.count(), 1)
++
++    def test_la_entrada_recreada_se_ve_y_se_imprime(self):
++        self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00", "inicial")
++        self.correr()
++        lote = LoteStock.objects.get()
++        self.client.force_login(self.admin)
++        self.assertContains(self.client.get(reverse("panel:lotes")), f"Entrada #{lote.pk}")
++        self.assertContains(self.client.get(reverse("panel:lote_detalle", args=[lote.pk])), "Pop it")
++        r = self.client.get(reverse("panel:lote_pdf", args=[lote.pk]))
++        self.assertEqual((r.status_code, r.content[:4]), (200, b"%PDF"))
++
++    def test_se_puede_revertir(self):
++        a = self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00")
++        self.correr()
++        mias = LoteStock.objects.filter(nota__startswith=self.mod.MARCA)
++        MovimientoStock.objects.filter(lote__in=mias).update(lote=None)
++        mias.delete()
++        a.refresh_from_db()
++        self.assertEqual((a.lote, a.antes, a.despues), (None, None, None))
++        self.assertEqual(self.stock(self.p1, self.casa), 5)
++
++    def test_comando_simular(self):
++        from io import StringIO
++        from django.core.management import call_command
++        self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00")
++        out = StringIO()
++        call_command("recrear_lotes_antiguos", "--simular", stdout=out)
++        self.assertIn("Se crearían 1 entradas", out.getvalue())
++        self.assertEqual(LoteStock.objects.count(), 0)
++
++
+ class VistasPorUbicacionTests(Base):
+     def setUp(self):
+         super().setUp()
+diff --git a/inventario/urls.py b/inventario/urls.py
+index beab8d9..fb34e89 100644
+--- a/inventario/urls.py
++++ b/inventario/urls.py
+@@ -11,6 +11,10 @@ urlpatterns = [
+ 
+     path("", views.stock_lista, name="stock"),
+     path("carga/", views.stock_carga, name="stock_carga"),
++    path("lotes/", views.lotes_lista, name="lotes"),
++    path("lotes/<int:pk>/", views.lote_detalle, name="lote_detalle"),
++    path("lotes/<int:pk>/pdf/", views.lote_pdf, name="lote_pdf"),
++    path("movimientos/", views.movimientos_lista, name="movimientos"),
+     path("producto/<int:pk>/", views.stock_producto, name="stock_producto"),
+     path("producto/<int:pk>/ingreso/", views.stock_ingreso, name="stock_ingreso"),
+     path("producto/<int:pk>/traslado/", views.stock_traslado, name="stock_traslado"),
+diff --git a/inventario/views.py b/inventario/views.py
+index eb55c7f..3853d68 100644
+--- a/inventario/views.py
++++ b/inventario/views.py
+@@ -22,10 +22,10 @@ from . import catalogo_pdf
+ from .fotos import foto_panel
+ from .lineas import leer_costeo, leer_decimal, leer_lineas, leer_piezas_a_medida
+ from .models import (
+-    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, MovimientoStock, PerfilVendedor, Stock, Ubicacion, Venta, VentaItem,
++    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, LoteStock, MovimientoStock, PerfilVendedor, Stock, Ubicacion, Venta, VentaItem,
+     ids_ubicaciones_propias,
+ )
+-from .pdf import generar_pdf_cotizacion, generar_pdf_recibo
++from .pdf import generar_pdf_cotizacion, generar_pdf_lote, generar_pdf_recibo
+ from .servicios import ErrorNegocio
+ 
+ User = get_user_model()
+@@ -145,7 +145,8 @@ def stock_lista(request):
+         cants = [f["lugares"][i]["cantidad"] for f in filas for i, x in enumerate(f["lugares"]) if x["ubicacion"].pk == u.pk]
+         resumen_ub.append({
+             "ubicacion": u, "propia": u.pk in propias,
+-            "unidades": sum(c for c in cants if c > 0),
++            "unidades": sum(cants),  # NETO: igual a la suma real en la base (los negativos restan)
++            "disponibles": sum(c for c in cants if c > 0),
+             "productos": sum(1 for c in cants if c > 0),
+             "agotados": sum(1 for c in cants if c <= 0),
+             "por_cubrir": sum(-c for c in cants if c < 0),
+@@ -194,6 +195,7 @@ def stock_carga(request):
+     modo = request.POST.get("modo") if request.POST.get("modo") in ("sumar", "fijar") else "sumar"
+     nota = request.POST.get("nota", "").strip()[:200]
+     escritos, errores, cambios = {}, [], []
++    repetidos = _nombres_repetidos(productos)
+ 
+     if request.method == "POST":
+         for clave, valor in request.POST.items():
+@@ -217,14 +219,21 @@ def stock_carga(request):
+         if not errores:
+             try:
+                 cambios.sort(key=lambda c: (c[0].nombre.lower(), c[1].orden))
+-                aplicados, sin_cambio = servicios.carga_masiva(cambios, modo, request.user, nota)
++                lote = servicios.carga_masiva(cambios, modo, request.user, nota)
++                aplicados, sin_cambio = lote.aplicados, lote.sin_cambio
+                 n_prod = len({c[0].pk for c in cambios})
+-                texto = (f"Se actualizaron {aplicados} cantidad{'es' if aplicados != 1 else ''} "
+-                         f"de {n_prod} producto{'s' if n_prod != 1 else ''}.")
++                texto = (f"Lote #{lote.pk} guardado: se actualizaron {aplicados} cantidad{'es' if aplicados != 1 else ''} "
++                         f"de {n_prod} producto{'s' if n_prod != 1 else ''}. Revisa abajo que quedó como esperabas.")
+                 if sin_cambio:
+                     texto += f" ({sin_cambio} ya tenía{'n' if sin_cambio != 1 else ''} esa cantidad.)"
+                 messages.success(request, texto)
+-                return redirect("panel:stock")
++                tocados = sorted({c[0].nombre for c in cambios if _clave_nombre(c[0].nombre) in repetidos})
++                if tocados:
++                    messages.warning(request, (
++                        "Ojo: estos productos tienen el MISMO nombre que otro producto del catálogo, y la carga se "
++                        "aplicó solo al que marcaste: " + ", ".join(tocados) + ". Si son el mismo juguete, "
++                        "únelos o revisa en cuál estás cargando."))
++                return redirect("panel:lote_detalle", pk=lote.pk)
+             except ErrorNegocio as e:
+                 errores.append(str(e))
+ 
+@@ -232,17 +241,32 @@ def stock_carga(request):
+     for p in productos:
+         hay = {s.ubicacion_id: s.cantidad for s in p.stocks.all()}
+         filas.append({
+-            "producto": p, "foto": foto_panel(p),
++            "producto": p, "foto": foto_panel(p), "repetido": _clave_nombre(p.nombre) in repetidos,
+             "total": sum(hay.get(u.pk, 0) for u in ubicaciones),
+             "celdas": [{"ubicacion": u, "hay": hay.get(u.pk, 0), "campo": f"c_{p.pk}_{u.pk}",
+                         "valor": escritos.get(f"c_{p.pk}_{u.pk}", "")} for u in ubicaciones],
+         })
+     return render(request, "panel/stock_carga.html", {
+         "filas": filas, "ubicaciones": ubicaciones, "modo": modo, "nota": nota, "errores": errores,
++        "hay_repetidos": bool(repetidos), "n_repetidos": sum(1 for f in filas if f["repetido"]),
+         "categorias": Categoria.objects.filter(productos__isnull=False).distinct().order_by("orden", "nombre"),
+     })
+ 
+ 
++def _clave_nombre(nombre):
++    """Nombre normalizado para detectar productos repetidos («Pop it » = «pop  IT»)."""
++    return " ".join((nombre or "").lower().split())
++
++
++def _nombres_repetidos(productos):
++    """Claves de nombre que tienen 2 o más productos (el nombre no es único en el catálogo)."""
++    cuenta = {}
++    for p in productos:
++        k = _clave_nombre(p.nombre)
++        cuenta[k] = cuenta.get(k, 0) + 1
++    return {k for k, n in cuenta.items() if n > 1}
++
++
+ def _entero(texto):
+     t = (texto or "").strip()
+     return int(t) if t.lstrip("-").isdigit() else None
+@@ -252,6 +276,108 @@ def _ubicacion(pk):
+     return Ubicacion.objects.filter(pk=pk, activa=True).first() if str(pk).isdigit() else None
+ 
+ 
++# --------------------------------------------------------------------------
++# Lotes de stock e historial de movimientos (solo admin)
++# --------------------------------------------------------------------------
++@solo_admin
++def lotes_lista(request):
++    """Todas las cargas en lote hechas, para revisarlas (quién, cuándo, modo, cuánto)."""
++    qs = LoteStock.objects.select_related("usuario")
++    texto = request.GET.get("q", "").strip()
++    modo = request.GET.get("modo", "")
++    usuario = request.GET.get("usuario", "")
++    desde, hasta = _fecha(request.GET.get("desde")), _fecha(request.GET.get("hasta"))
++    if texto:
++        cond = (Q(nota__icontains=texto) | Q(usuario__username__icontains=texto)
++                | Q(movimientos__producto__nombre__icontains=texto) | Q(movimientos__producto__codigo__icontains=texto))
++        if texto.lstrip("#").isdigit():
++            cond |= Q(pk=int(texto.lstrip("#")))
++        qs = qs.filter(cond).distinct()
++    if modo in (LoteStock.SUMAR, LoteStock.FIJAR):
++        qs = qs.filter(modo=modo)
++    else:
++        modo = ""
++    if usuario.isdigit():
++        qs = qs.filter(usuario_id=int(usuario))
++    if desde:
++        qs = qs.filter(creado__date__gte=desde)
++    if hasta:
++        qs = qs.filter(creado__date__lte=hasta)
++    lotes = list(qs.annotate(
++        n_productos=Count("movimientos__producto", distinct=True),
++        neto=Sum("movimientos__cantidad"),
++    )[:200])
++    return render(request, "panel/lotes_lista.html", {
++        "lotes": lotes, "modos": LoteStock.MODOS,
++        "usuarios": User.objects.filter(lotes_stock__isnull=False).distinct(),
++        "f": {"q": texto, "modo": modo, "usuario": usuario,
++              "desde": desde.isoformat() if desde else "", "hasta": hasta.isoformat() if hasta else ""},
++    })
++
++
++@solo_admin
++def lote_detalle(request, pk):
++    lote = get_object_or_404(LoteStock.objects.select_related("usuario"), pk=pk)
++    movs = list(lote.movimientos.select_related("producto", "ubicacion").order_by("producto__nombre", "ubicacion__orden"))
++    por_ubicacion = {}
++    for m in movs:
++        r = por_ubicacion.setdefault(m.ubicacion.pk, {"nombre": m.ubicacion.nombre, "unidades": 0, "productos": 0})
++        r["unidades"] += m.cantidad
++        r["productos"] += 1
++    return render(request, "panel/lote_detalle.html", {
++        "lote": lote, "movs": movs, "por_ubicacion": list(por_ubicacion.values()),
++        "unidades": sum(m.cantidad for m in movs),
++        "n_productos": len({m.producto_id for m in movs}),
++        "con_saldos": any(m.antes is not None for m in movs),  # las entradas antiguas recreadas no los tienen
++    })
++
++
++@solo_admin
++def lote_pdf(request, pk):
++    """PDF de una entrada de productos (lote): qué entró, dónde, y lo que había / quedó."""
++    lote = get_object_or_404(LoteStock.objects.select_related("usuario"), pk=pk)
++    respuesta = HttpResponse(generar_pdf_lote(lote), content_type="application/pdf")
++    respuesta["Content-Disposition"] = f'inline; filename="entrada-{lote.pk:05d}.pdf"'
++    return respuesta
++
++
++@solo_admin
++def movimientos_lista(request):
++    """Historial de TODOS los movimientos de stock (cargas en lote, ingresos sueltos, ventas,
++    traslados, ajustes), con filtros, para verificar cualquier cambio."""
++    qs = MovimientoStock.objects.select_related("producto", "ubicacion", "usuario", "lote")
++    texto = request.GET.get("q", "").strip()
++    tipo = request.GET.get("tipo", "")
++    ubicacion = request.GET.get("ubicacion", "")
++    usuario = request.GET.get("usuario", "")
++    desde, hasta = _fecha(request.GET.get("desde")), _fecha(request.GET.get("hasta"))
++    if texto:
++        qs = qs.filter(Q(producto__nombre__icontains=texto) | Q(producto__codigo__icontains=texto) | Q(nota__icontains=texto))
++    if tipo in dict(MovimientoStock.TIPOS):
++        qs = qs.filter(tipo=tipo)
++    else:
++        tipo = ""
++    if ubicacion.isdigit():
++        qs = qs.filter(ubicacion_id=int(ubicacion))
++    else:
++        ubicacion = ""
++    if usuario.isdigit():
++        qs = qs.filter(usuario_id=int(usuario))
++    if desde:
++        qs = qs.filter(creado__date__gte=desde)
++    if hasta:
++        qs = qs.filter(creado__date__lte=hasta)
++    entradas = qs.filter(cantidad__gt=0).aggregate(t=Sum("cantidad"))["t"] or 0
++    salidas = -(qs.filter(cantidad__lt=0).aggregate(t=Sum("cantidad"))["t"] or 0)
++    return render(request, "panel/movimientos_lista.html", {
++        "movs": qs[:300], "total": qs.count(), "entradas": entradas, "salidas": salidas,
++        "tipos": MovimientoStock.TIPOS, "ubicaciones": Ubicacion.objects.all(),
++        "usuarios": User.objects.filter(movimientostock__isnull=False).distinct(),
++        "f": {"q": texto, "tipo": tipo, "ubicacion": ubicacion, "usuario": usuario,
++              "desde": desde.isoformat() if desde else "", "hasta": hasta.isoformat() if hasta else ""},
++    })
++
++
+ @solo_admin
+ @require_POST
+ def stock_ingreso(request, pk):
+@@ -260,8 +386,14 @@ def stock_ingreso(request, pk):
+     try:
+         if ub is None or cant is None:
+             raise ErrorNegocio("Elige el lugar y escribe una cantidad válida.")
+-        servicios.registrar_ingreso(producto, ub, cant, request.user, request.POST.get("nota", "").strip())
+-        messages.success(request, f"Se agregaron {cant} unidades en {ub.nombre}.")
++        if cant <= 0:
++            raise ErrorNegocio("La cantidad debe ser mayor que 0.")
++        # Cada ingreso queda como una «entrada» (lote de 1 producto): se puede revisar e imprimir en PDF.
++        lote = servicios.carga_masiva([(producto, ub, cant)], "sumar", request.user,
++                                      request.POST.get("nota", "").strip(), origen="Ingreso")
++        messages.success(request, f"Se agregaron {cant} unidades en {ub.nombre}. Entrada #{lote.pk}: "
++                                  "aquí puedes verificarla e imprimirla en PDF.")
++        return redirect("panel:lote_detalle", pk=lote.pk)
+     except ErrorNegocio as e:
+         messages.error(request, str(e))
+     return redirect("panel:stock_producto", pk=pk)
+diff --git a/static/css/panel.css b/static/css/panel.css
+index 670cd25..3c050a1 100644
+--- a/static/css/panel.css
++++ b/static/css/panel.css
+@@ -460,3 +460,13 @@ kbd { background: #f0ece2; border: 1px solid #d8d1bf; border-radius: .25rem; pad
+   .p-tres .p-usar-sug { grid-column: 1 / -1; }
+   .p-pieza-det .precio { text-align: left; flex: 1 1 100%; }
+ }
++
++/* Carga en lote: vista previa y lotes */
++.p-prev { display: block; font-size: .68rem; color: var(--teal-dark); font-weight: 700; text-align: right; }
++.p-tabla-lote td.t-num, .p-tabla-lote th.t-num { text-align: right; white-space: nowrap; }
++.p-tabla-lote .pos { color: #2e8b3d; }
++.p-tabla-lote .neg { color: #c0392b; }
++.p-monto.neg { color: #c0392b; }
++.p-fila-lote { display: flex; gap: .5rem; align-items: stretch; }
++.p-fila-lote .p-fila-venta { flex: 1; min-width: 0; }
++.p-fila-lote .p-pdf { align-self: center; white-space: nowrap; }
+diff --git a/static/js/panel_carga.js b/static/js/panel_carga.js
+index 8ae9685..8f3059a 100644
+--- a/static/js/panel_carga.js
++++ b/static/js/panel_carga.js
+@@ -7,6 +7,8 @@
+   const cat = form.querySelector("[data-c-cat]");
+   const soloVacios = form.querySelector("[data-c-vacios]");
+   const soloEscritos = form.querySelector("[data-c-escritos]");
++  const soloRepetidos = form.querySelector("[data-c-repetidos]");
++  const modoSel = () => (form.querySelector('input[name="modo"]:checked') || {}).value || "sumar";
+   const contador = form.querySelector("[data-c-contador]");
+   const visiblesEl = form.querySelector("[data-c-visibles]");
+   const norm = (t) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+@@ -23,6 +25,7 @@
+       if (ok && cat.value && d.categoria !== cat.value) ok = false;
+       if (ok && soloVacios.checked && parseInt(d.total, 10) > 0) ok = false;
+       if (ok && soloEscritos.checked && !escrita(f)) ok = false;
++      if (ok && soloRepetidos && soloRepetidos.checked && !d.repetido) ok = false;
+       f.hidden = !ok;
+       if (ok) n++;
+     });
+@@ -37,9 +40,24 @@
+       : "Aún no escribiste nada.";
+     form.querySelector("[data-c-guardar]").disabled = cambios === 0;
+     filas.forEach((f) => f.classList.toggle("editada", escrita(f)));
++    previas();
+   }
+ 
+-  [q, cat, soloVacios, soloEscritos].forEach((e) => e.addEventListener("input", filtrar));
++  // Debajo de cada cantidad escrita: cómo quedará el stock (hay → quedará)
++  function previas() {
++    const fijar = modoSel() === "fijar";
++    form.querySelectorAll("[data-celda]").forEach((i) => {
++      const prev = i.parentElement.querySelector("[data-prev]");
++      const t = i.value.trim();
++      if (t === "" || !/^-?\d+$/.test(t)) { prev.hidden = true; return; }
++      const hay = parseInt(i.dataset.hay, 10), n = parseInt(t, 10);
++      prev.textContent = "→ quedará " + (fijar ? n : hay + n);
++      prev.hidden = false;
++    });
++  }
++  form.querySelectorAll('input[name="modo"]').forEach((r) => r.addEventListener("change", previas));
++
++  [q, cat, soloVacios, soloEscritos, soloRepetidos].filter(Boolean).forEach((e) => e.addEventListener("input", filtrar));
+   form.addEventListener("input", (e) => { if (e.target.matches("[data-celda]")) { contar(); if (soloEscritos.checked) filtrar(); } });
+ 
+   // Rellenar una columna entera (solo los productos que se ven ahora)
+@@ -76,7 +94,15 @@
+   window.addEventListener("beforeunload", (e) => {
+     if (filas.some(escrita) && !form.dataset.enviando) { e.preventDefault(); e.returnValue = ""; }
+   });
+-  form.addEventListener("submit", () => { form.dataset.enviando = "1"; });
++  form.addEventListener("submit", (e) => {
++    if (form.dataset.enviando) { e.preventDefault(); return; }  // doble clic: no se envía dos veces
++    const cambios = filas.reduce((n, f) => n + celdasDe(f).filter((i) => i.value.trim() !== "").length, 0);
++    const prods = filas.filter(escrita).length;
++    const accion = modoSel() === "fijar" ? "FIJAR (el stock quedará exactamente en esas cantidades)" : "SUMAR (se agregan al stock actual)";
++    if (!confirm("Vas a " + accion + ":\n" + cambios + " cantidad(es) en " + prods + " producto(s).\n\n¿Guardar?")) { e.preventDefault(); return; }
++    form.dataset.enviando = "1";
++    form.querySelector("[data-c-guardar]").disabled = true;
++  });
+ 
+   filtrar();
+   contar();
+diff --git a/static/js/panel_vista.js b/static/js/panel_vista.js
+index 291e7e4..c2eb945 100644
+--- a/static/js/panel_vista.js
++++ b/static/js/panel_vista.js
+@@ -141,7 +141,7 @@
+     tarjetas.forEach((t) => {
+       const ok = pasa(t.dataset);
+       t.hidden = !ok;
+-      if (ok) { visibles++; unidades += Math.max(parseInt(t.dataset.total, 10) || 0, 0); }
++      if (ok) { visibles++; unidades += parseInt(t.dataset.total, 10) || 0; }  // neto: igual que la base y que el pie de la tabla
+     });
+     filasTabla.forEach((t) => {
+       const ok = pasa(t.dataset);
+diff --git a/templates/panel/base_panel.html b/templates/panel/base_panel.html
+index 99b4c9f..8a7d625 100644
+--- a/templates/panel/base_panel.html
++++ b/templates/panel/base_panel.html
+@@ -22,6 +22,7 @@
+         <a style="--c:#5FBF57" href="{% url 'panel:venta_nueva' %}" {% if u == 'venta_nueva' %}class="on"{% endif %}>Vender</a>
+         <a style="--c:#2F9BE0" href="{% url 'panel:ventas' %}" {% if u == 'ventas' or u == 'venta_detalle' %}class="on"{% endif %}>Ventas</a>
+         <a style="--c:#8B5CF6" href="{% url 'panel:cotizacion_nueva' %}" {% if u == 'cotizacion_nueva' %}class="on"{% endif %}>Cotizar</a>
++        {% if user.is_staff %}<a style="--c:#1FA37A" href="{% url 'panel:lotes' %}" {% if u == 'lotes' or u == 'lote_detalle' or u == 'movimientos' %}class="on"{% endif %}>Lotes</a>{% endif %}
+         {% if user.is_staff %}<a style="--c:#FF6F59" href="{% url 'panel:cotizacion_medida' %}" {% if u == 'cotizacion_medida' %}class="on"{% endif %}>A medida</a>{% endif %}
+         <a style="--c:#F0609B" href="{% url 'panel:cotizaciones' %}" {% if u == 'cotizaciones' or u == 'cotizacion_detalle' %}class="on"{% endif %}>Cotizaciones</a>
+         {% if user.is_staff %}<a style="--c:#FFB238;--t:#3a2a00" href="{% url 'panel:usuarios' %}" {% if u == 'usuarios' %}class="on"{% endif %}>Usuarios</a>{% endif %}
+diff --git a/templates/panel/lote_detalle.html b/templates/panel/lote_detalle.html
+new file mode 100644
+index 0000000..7965806
+--- /dev/null
++++ b/templates/panel/lote_detalle.html
+@@ -0,0 +1,38 @@
++{% extends "panel/base_panel.html" %}
++{% block titulo %}Entrada #{{ lote.pk }}{% endblock %}
++{% block contenido %}
++<p><a href="{% url 'panel:lotes' %}">← Todos los lotes</a></p>
++<div class="p-titulo"><h1>Entrada #{{ lote.pk }} <span class="p-tag {% if lote.modo == 'fijar' %}warn{% endif %}">{{ lote.get_modo_display|upper }}</span></h1>
++  <a class="p-btn" href="{% url 'panel:lote_pdf' lote.pk %}" target="_blank" rel="noopener">🖨 Imprimir PDF</a></div>
++<p class="p-soft">{{ lote.creado|date:"d/m/Y H:i" }} · hecho por <b>{{ lote.usuario.username|default:"—" }}</b>{% if lote.nota %} · Nota: {{ lote.nota }}{% endif %}</p>
++
++<div class="p-kpis">
++  <div><span class="p-soft">Productos</span><b>{{ n_productos }}</b></div>
++  <div><span class="p-soft">Cantidades guardadas</span><b>{{ lote.aplicados }}</b></div>
++  <div><span class="p-soft">{% if lote.modo == 'fijar' %}Diferencia neta{% else %}Unidades sumadas{% endif %}</span><b>{{ unidades|stringformat:"+d" }}</b></div>
++</div>
++{% if lote.sin_cambio %}<p class="p-soft">{{ lote.sin_cambio }} cantidad{{ lote.sin_cambio|pluralize:",es" }} ya {{ lote.sin_cambio|pluralize:"era,eran" }} igual{{ lote.sin_cambio|pluralize:",es" }} a lo registrado, por eso no generaron movimiento.</p>{% endif %}
++
++{% if por_ubicacion|length > 1 %}
++<div class="p-card"><h2>Por ubicación</h2>
++  {% for r in por_ubicacion %}<div class="p-linea"><b>{{ r.nombre }}</b><span>{{ r.productos }} producto{{ r.productos|pluralize }}</span><span>{{ r.unidades|stringformat:"+d" }} unid.</span></div>{% endfor %}
++</div>
++{% endif %}
++
++<div class="p-tabla-wrap">
++<table class="p-tabla p-tabla-lote">
++  <thead><tr><th>Producto</th><th>Ubicación</th>{% if con_saldos %}<th class="t-num">Había</th>{% endif %}<th class="t-num">{% if con_saldos %}Cambio{% else %}Cantidad{% endif %}</th>{% if con_saldos %}<th class="t-num">Quedó</th>{% endif %}</tr></thead>
++  <tbody>
++  {% for m in movs %}
++    <tr>
++      <td>{% if m.producto.codigo %}<span class="p-prod-cod">{{ m.producto.codigo }}</span> {% endif %}<a href="{% url 'panel:stock_producto' m.producto_id %}"><b>{{ m.producto.nombre }}</b></a></td>
++      <td>{{ m.ubicacion.nombre }}</td>
++      {% if con_saldos %}<td class="t-num">{{ m.antes|default_if_none:"—" }}</td>{% endif %}
++      <td class="t-num {% if m.cantidad > 0 %}pos{% else %}neg{% endif %}"><b>{{ m.cantidad|stringformat:"+d" }}</b></td>
++      {% if con_saldos %}<td class="t-num"><b>{{ m.despues|default_if_none:"—" }}</b></td>{% endif %}
++    </tr>
++  {% empty %}<tr><td colspan="{% if con_saldos %}5{% else %}3{% endif %}" class="p-soft">Este lote no generó ningún movimiento (todo ya estaba con esas cantidades).</td></tr>{% endfor %}
++  </tbody>
++</table>
++</div>
++{% endblock %}
+diff --git a/templates/panel/lotes_lista.html b/templates/panel/lotes_lista.html
+new file mode 100644
+index 0000000..1ec1ba7
+--- /dev/null
++++ b/templates/panel/lotes_lista.html
+@@ -0,0 +1,37 @@
++{% extends "panel/base_panel.html" %}
++{% block titulo %}Entradas de stock{% endblock %}
++{% block contenido %}
++<h1>Entradas de stock (lotes)</h1>
++<p class="p-soft">Cada carga en lote y cada ingreso suelto queda aquí, y se puede imprimir en PDF. Cada vez que guardas una <a href="{% url 'panel:stock_carga' %}">carga en lote</a> queda aquí. Abre uno para ver, producto por producto, lo que había y lo que quedó.
++  · <a href="{% url 'panel:movimientos' %}">Ver todos los movimientos (ingresos sueltos, ventas, traslados, ajustes)</a></p>
++
++<form class="p-filtros" method="get">
++  <input type="search" name="q" value="{{ f.q }}" placeholder="Buscar por N° de lote, producto, código, nota o usuario…" autocomplete="off">
++  <select name="modo" aria-label="Modo">
++    <option value="">Sumar y fijar</option>
++    {% for clave, etiqueta in modos %}<option value="{{ clave }}" {% if f.modo == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
++  </select>
++  <select name="usuario" aria-label="Usuario"><option value="">Todos los usuarios</option>
++    {% for u in usuarios %}<option value="{{ u.pk }}" {% if f.usuario == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>{% endfor %}
++  </select>
++  <label>Desde <input type="date" name="desde" value="{{ f.desde }}"></label>
++  <label>Hasta <input type="date" name="hasta" value="{{ f.hasta }}"></label>
++  <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
++  {% if f.q or f.modo or f.usuario or f.desde or f.hasta %}<a class="p-btn p-btn-sec" href="{% url 'panel:lotes' %}">Limpiar</a>{% endif %}
++</form>
++
++<div class="p-lista">
++{% for l in lotes %}
++  <div class="p-fila-lote">
++  <a class="p-fila-venta" href="{% url 'panel:lote_detalle' l.pk %}">
++    <div><strong>Entrada #{{ l.pk }}</strong> <span class="p-soft">{{ l.creado|date:"d/m/Y H:i" }}</span>
++      <span class="p-tag {% if l.modo == 'fijar' %}warn{% endif %}">{{ l.get_modo_display|upper }}</span><br>
++      <span class="p-soft">{{ l.usuario.username|default:"—" }} · {{ l.n_productos }} producto{{ l.n_productos|pluralize }} · {{ l.aplicados }} cantidad{{ l.aplicados|pluralize:",es" }}{% if l.sin_cambio %} (+{{ l.sin_cambio }} sin cambio){% endif %}</span>
++      {% if l.nota %}<br><span class="p-codigos">{{ l.nota }}</span>{% endif %}</div>
++    <div class="p-monto {% if l.neto and l.neto < 0 %}neg{% endif %}">{{ l.neto|default:0|stringformat:"+d" }} unid.</div>
++  </a>
++  <a class="p-btn p-btn-sec p-pdf" href="{% url 'panel:lote_pdf' l.pk %}" target="_blank" rel="noopener" title="Imprimir esta entrada en PDF">🖨 PDF</a>
++  </div>
++{% empty %}<p class="p-soft">{% if f.q or f.modo or f.usuario or f.desde or f.hasta %}No hay lotes con esos filtros. <a href="{% url 'panel:lotes' %}">Quitar los filtros</a>{% else %}Aún no hiciste ninguna carga en lote.{% endif %}</p>{% endfor %}
++</div>
++{% endblock %}
+diff --git a/templates/panel/movimientos_lista.html b/templates/panel/movimientos_lista.html
+new file mode 100644
+index 0000000..679c1cd
+--- /dev/null
++++ b/templates/panel/movimientos_lista.html
+@@ -0,0 +1,51 @@
++{% extends "panel/base_panel.html" %}
++{% block titulo %}Movimientos de stock{% endblock %}
++{% block contenido %}
++<p><a href="{% url 'panel:lotes' %}">← Lotes</a></p>
++<h1>Movimientos de stock</h1>
++<p class="p-soft">Todo lo que entró o salió del stock: cargas en lote, ingresos sueltos, ventas, anulaciones, traslados y ajustes.</p>
++
++<form class="p-filtros" method="get">
++  <input type="search" name="q" value="{{ f.q }}" placeholder="Buscar por producto, código o nota…" autocomplete="off">
++  <select name="tipo" aria-label="Tipo"><option value="">Todos los tipos</option>
++    {% for clave, etiqueta in tipos %}<option value="{{ clave }}" {% if f.tipo == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
++  </select>
++  <select name="ubicacion" aria-label="Ubicación"><option value="">Todas las ubicaciones</option>
++    {% for u in ubicaciones %}<option value="{{ u.pk }}" {% if f.ubicacion == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
++  </select>
++  <select name="usuario" aria-label="Usuario"><option value="">Todos los usuarios</option>
++    {% for u in usuarios %}<option value="{{ u.pk }}" {% if f.usuario == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>{% endfor %}
++  </select>
++  <label>Desde <input type="date" name="desde" value="{{ f.desde }}"></label>
++  <label>Hasta <input type="date" name="hasta" value="{{ f.hasta }}"></label>
++  <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
++  {% if f.q or f.tipo or f.ubicacion or f.usuario or f.desde or f.hasta %}<a class="p-btn p-btn-sec" href="{% url 'panel:movimientos' %}">Limpiar</a>{% endif %}
++</form>
++
++<div class="p-kpis">
++  <div><span class="p-soft">Movimientos</span><b>{{ total }}</b></div>
++  <div><span class="p-soft">Entraron</span><b>+{{ entradas }}</b></div>
++  <div><span class="p-soft">Salieron</span><b>−{{ salidas }}</b></div>
++</div>
++{% if total > 300 %}<p class="p-soft">Se muestran los 300 más recientes de {{ total }}. Usa los filtros para acotar.</p>{% endif %}
++
++<div class="p-tabla-wrap">
++<table class="p-tabla p-tabla-lote">
++  <thead><tr><th>Fecha</th><th>Producto</th><th>Ubicación</th><th>Tipo</th><th class="t-num">Había</th><th class="t-num">Cambio</th><th class="t-num">Quedó</th><th>Quién / detalle</th></tr></thead>
++  <tbody>
++  {% for m in movs %}
++    <tr>
++      <td>{{ m.creado|date:"d/m/Y H:i" }}</td>
++      <td>{% if m.producto.codigo %}<span class="p-prod-cod">{{ m.producto.codigo }}</span> {% endif %}<a href="{% url 'panel:stock_producto' m.producto_id %}"><b>{{ m.producto.nombre }}</b></a></td>
++      <td>{{ m.ubicacion.nombre }}</td>
++      <td>{{ m.get_tipo_display }}</td>
++      <td class="t-num">{{ m.antes|default_if_none:"—" }}</td>
++      <td class="t-num {% if m.cantidad > 0 %}pos{% else %}neg{% endif %}"><b>{{ m.cantidad|stringformat:"+d" }}</b></td>
++      <td class="t-num">{{ m.despues|default_if_none:"—" }}</td>
++      <td class="p-soft">{{ m.usuario.username|default:"—" }}{% if m.lote_id %} · <a href="{% url 'panel:lote_detalle' m.lote_id %}">Entrada #{{ m.lote_id }}</a>{% endif %}{% if m.venta_id %} · <a href="{% url 'panel:venta_detalle' m.venta_id %}">Venta #{{ m.venta_id }}</a>{% endif %}{% if m.nota %}<br>{{ m.nota }}{% endif %}</td>
++    </tr>
++  {% empty %}<tr><td colspan="8" class="p-soft">No hay movimientos con esos filtros.</td></tr>{% endfor %}
++  </tbody>
++</table>
++</div>
++{% endblock %}
+diff --git a/templates/panel/stock_carga.html b/templates/panel/stock_carga.html
+index a37ba54..55033ec 100644
+--- a/templates/panel/stock_carga.html
++++ b/templates/panel/stock_carga.html
+@@ -4,6 +4,7 @@
+ {% block contenido %}
+ <p><a href="{% url 'panel:stock' %}">← Volver al stock</a></p>
+ <h1>Cargar stock en lote</h1>
++<p class="p-soft"><a href="{% url 'panel:lotes' %}">Ver lotes anteriores</a> · <a href="{% url 'panel:movimientos' %}">Ver todos los movimientos</a></p>
+ <p class="p-soft">Escribe las cantidades en la tabla (solo las celdas que quieras cambiar) y guarda <b>una sola vez</b>. Usa <kbd>Enter</kbd> para bajar a la celda de abajo y <kbd>Tab</kbd> para ir a la siguiente ubicación. Todo queda en el historial.</p>
+ 
+ {% if errores %}<div class="p-msg error"><b>No se guardó nada.</b> Corrige esto y vuelve a guardar:<ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+@@ -27,6 +28,7 @@
+       </select>
+       <label class="p-check"><input type="checkbox" data-c-vacios> Solo productos sin stock (0 o por cubrir)</label>
+       <label class="p-check"><input type="checkbox" data-c-escritos> Solo los que estoy cambiando</label>
++      {% if hay_repetidos %}<label class="p-check"><input type="checkbox" data-c-repetidos> Solo nombres repetidos ({{ n_repetidos }})</label>{% endif %}
+     </div>
+   </div>
+ 
+@@ -47,15 +49,16 @@
+       </thead>
+       <tbody>
+       {% for f in filas %}
+-        <tr data-fila data-nombre="{{ f.producto.nombre }}" data-codigo="{{ f.producto.codigo|default:'' }}" data-categoria="{{ f.producto.categoria_id|default:'' }}" data-total="{{ f.total }}">
++        <tr data-fila data-nombre="{{ f.producto.nombre }}" data-codigo="{{ f.producto.codigo|default:'' }}" data-categoria="{{ f.producto.categoria_id|default:'' }}" data-total="{{ f.total }}"{% if f.repetido %} data-repetido="1"{% endif %}>
+           <td class="t-prod">
+             <span class="t-foto">{% if f.foto %}<img src="{{ f.foto }}" alt="" loading="lazy">{% else %}<i class="p-sinfoto"></i>{% endif %}</span>
+-            <span class="t-txt">{% if f.producto.codigo %}<span class="p-prod-cod">{{ f.producto.codigo }}</span> {% endif %}<b>{{ f.producto.nombre }}</b></span>
++            <span class="t-txt">{% if f.producto.codigo %}<span class="p-prod-cod">{{ f.producto.codigo }}</span> {% endif %}<b>{{ f.producto.nombre }}</b>{% if f.repetido %} <span class="p-tag warn" title="Hay otro producto con este mismo nombre. Revisa en cuál cargas.">NOMBRE REPETIDO</span>{% endif %}</span>
+           </td>
+           {% for c in f.celdas %}
+           <td class="t-num">
+             <small class="p-hay {% if c.hay < 0 %}neg{% elif c.hay == 0 %}cero{% endif %}">hay {{ c.hay }}</small>
+-            <input type="number" name="{{ c.campo }}" value="{{ c.valor }}" inputmode="numeric" min="0" data-celda data-col="{{ c.ubicacion.pk }}" aria-label="{{ f.producto.nombre }} en {{ c.ubicacion.nombre }}">
++            <input type="number" name="{{ c.campo }}" value="{{ c.valor }}" inputmode="numeric" min="0" data-celda data-hay="{{ c.hay }}" data-col="{{ c.ubicacion.pk }}" aria-label="{{ f.producto.nombre }} en {{ c.ubicacion.nombre }}">
++            <small class="p-prev" data-prev hidden></small>
+           </td>
+           {% endfor %}
+         </tr>
+diff --git a/templates/panel/stock_lista.html b/templates/panel/stock_lista.html
+index aa41360..e73ab92 100644
+--- a/templates/panel/stock_lista.html
++++ b/templates/panel/stock_lista.html
+@@ -12,7 +12,7 @@
+   <button type="button" class="p-rub {% if not r.propia and hay_otras %}otra{% endif %}" data-r-lugar="{{ r.ubicacion.pk }}" title="Toca para ver solo los productos que hay en {{ r.ubicacion.nombre }}">
+     <span class="p-rub-n">{{ r.ubicacion.nombre }}{% if r.propia and hay_otras %} <i class="p-tag">mía</i>{% endif %}</span>
+     <b>{{ r.unidades }}</b> <span class="p-soft">unid. · {{ r.productos }} de {{ total_productos }} prod.</span>
+-    {% if r.por_cubrir %}<span class="p-rub-neg">⚠ {{ r.por_cubrir }} por cubrir</span>{% endif %}
++    {% if r.por_cubrir %}<span class="p-rub-neg" title="Hay {{ r.disponibles }} unidades en stock y {{ r.por_cubrir }} vendidas sin registrar: {{ r.disponibles }} − {{ r.por_cubrir }} = {{ r.unidades }}">⚠ {{ r.por_cubrir }} por cubrir (hay {{ r.disponibles }})</span>{% endif %}
+   </button>
+   {% endfor %}
+ </div>
+diff --git a/templates/panel/stock_producto.html b/templates/panel/stock_producto.html
+index 990c3e1..8fedf46 100644
+--- a/templates/panel/stock_producto.html
++++ b/templates/panel/stock_producto.html
+@@ -65,7 +65,8 @@
+   <div class="p-linea"><span>{{ m.creado|date:"d/m/Y H:i" }}</span>
+     <b class="{% if m.cantidad > 0 %}pos{% else %}neg{% endif %}">{{ m.cantidad|stringformat:"+d" }}</b>
+     <span>{{ m.get_tipo_display }}</span><span>{{ m.ubicacion }}</span>
+-    <span class="p-soft">{{ m.usuario.username|default:"—" }}{% if m.nota %} · {{ m.nota }}{% endif %}</span></div>
++    {% if m.despues is not None %}<span class="p-soft">({{ m.antes }} → {{ m.despues }})</span>{% endif %}
++    <span class="p-soft">{{ m.usuario.username|default:"—" }}{% if m.nota %} · {{ m.nota }}{% endif %}{% if m.lote_id and user.is_staff %} · <a href="{% url 'panel:lote_detalle' m.lote_id %}">Entrada #{{ m.lote_id }}</a>{% endif %}</span></div>
+   {% empty %}<p class="p-soft">Sin movimientos todavía.</p>{% endfor %}
+ </div>
+ {% endblock %}

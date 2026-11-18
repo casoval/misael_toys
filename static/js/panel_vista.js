@@ -141,7 +141,7 @@
     tarjetas.forEach((t) => {
       const ok = pasa(t.dataset);
       t.hidden = !ok;
-      if (ok) { visibles++; unidades += Math.max(parseInt(t.dataset.total, 10) || 0, 0); }
+      if (ok) { visibles++; unidades += parseInt(t.dataset.total, 10) || 0; }  // neto: igual que la base y que el pie de la tabla
     });
     filasTabla.forEach((t) => {
       const ok = pasa(t.dataset);

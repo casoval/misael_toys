@@ -22,10 +22,10 @@ from . import catalogo_pdf
 from .fotos import foto_panel
 from .lineas import leer_costeo, leer_decimal, leer_lineas, leer_piezas_a_medida
 from .models import (
-    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, MovimientoStock, PerfilVendedor, Stock, Ubicacion, Venta, VentaItem,
+    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, LoteStock, MovimientoStock, PerfilVendedor, Stock, Ubicacion, Venta, VentaItem,
     ids_ubicaciones_propias,
 )
-from .pdf import generar_pdf_cotizacion, generar_pdf_recibo
+from .pdf import generar_pdf_cotizacion, generar_pdf_lote, generar_pdf_recibo
 from .servicios import ErrorNegocio
 
 User = get_user_model()
@@ -145,7 +145,8 @@ def stock_lista(request):
         cants = [f["lugares"][i]["cantidad"] for f in filas for i, x in enumerate(f["lugares"]) if x["ubicacion"].pk == u.pk]
         resumen_ub.append({
             "ubicacion": u, "propia": u.pk in propias,
-            "unidades": sum(c for c in cants if c > 0),
+            "unidades": sum(cants),  # NETO: igual a la suma real en la base (los negativos restan)
+            "disponibles": sum(c for c in cants if c > 0),
             "productos": sum(1 for c in cants if c > 0),
             "agotados": sum(1 for c in cants if c <= 0),
             "por_cubrir": sum(-c for c in cants if c < 0),
@@ -194,6 +195,7 @@ def stock_carga(request):
     modo = request.POST.get("modo") if request.POST.get("modo") in ("sumar", "fijar") else "sumar"
     nota = request.POST.get("nota", "").strip()[:200]
     escritos, errores, cambios = {}, [], []
+    repetidos = _nombres_repetidos(productos)
 
     if request.method == "POST":
         for clave, valor in request.POST.items():
@@ -217,14 +219,21 @@ def stock_carga(request):
         if not errores:
             try:
                 cambios.sort(key=lambda c: (c[0].nombre.lower(), c[1].orden))
-                aplicados, sin_cambio = servicios.carga_masiva(cambios, modo, request.user, nota)
+                lote = servicios.carga_masiva(cambios, modo, request.user, nota)
+                aplicados, sin_cambio = lote.aplicados, lote.sin_cambio
                 n_prod = len({c[0].pk for c in cambios})
-                texto = (f"Se actualizaron {aplicados} cantidad{'es' if aplicados != 1 else ''} "
-                         f"de {n_prod} producto{'s' if n_prod != 1 else ''}.")
+                texto = (f"Lote #{lote.pk} guardado: se actualizaron {aplicados} cantidad{'es' if aplicados != 1 else ''} "
+                         f"de {n_prod} producto{'s' if n_prod != 1 else ''}. Revisa abajo que quedó como esperabas.")
                 if sin_cambio:
                     texto += f" ({sin_cambio} ya tenía{'n' if sin_cambio != 1 else ''} esa cantidad.)"
                 messages.success(request, texto)
-                return redirect("panel:stock")
+                tocados = sorted({c[0].nombre for c in cambios if _clave_nombre(c[0].nombre) in repetidos})
+                if tocados:
+                    messages.warning(request, (
+                        "Ojo: estos productos tienen el MISMO nombre que otro producto del catálogo, y la carga se "
+                        "aplicó solo al que marcaste: " + ", ".join(tocados) + ". Si son el mismo juguete, "
+                        "únelos o revisa en cuál estás cargando."))
+                return redirect("panel:lote_detalle", pk=lote.pk)
             except ErrorNegocio as e:
                 errores.append(str(e))
 
@@ -232,15 +241,30 @@ def stock_carga(request):
     for p in productos:
         hay = {s.ubicacion_id: s.cantidad for s in p.stocks.all()}
         filas.append({
-            "producto": p, "foto": foto_panel(p),
+            "producto": p, "foto": foto_panel(p), "repetido": _clave_nombre(p.nombre) in repetidos,
             "total": sum(hay.get(u.pk, 0) for u in ubicaciones),
             "celdas": [{"ubicacion": u, "hay": hay.get(u.pk, 0), "campo": f"c_{p.pk}_{u.pk}",
                         "valor": escritos.get(f"c_{p.pk}_{u.pk}", "")} for u in ubicaciones],
         })
     return render(request, "panel/stock_carga.html", {
         "filas": filas, "ubicaciones": ubicaciones, "modo": modo, "nota": nota, "errores": errores,
+        "hay_repetidos": bool(repetidos), "n_repetidos": sum(1 for f in filas if f["repetido"]),
         "categorias": Categoria.objects.filter(productos__isnull=False).distinct().order_by("orden", "nombre"),
     })
+
+
+def _clave_nombre(nombre):
+    """Nombre normalizado para detectar productos repetidos («Pop it » = «pop  IT»)."""
+    return " ".join((nombre or "").lower().split())
+
+
+def _nombres_repetidos(productos):
+    """Claves de nombre que tienen 2 o más productos (el nombre no es único en el catálogo)."""
+    cuenta = {}
+    for p in productos:
+        k = _clave_nombre(p.nombre)
+        cuenta[k] = cuenta.get(k, 0) + 1
+    return {k for k, n in cuenta.items() if n > 1}
 
 
 def _entero(texto):
@@ -252,6 +276,108 @@ def _ubicacion(pk):
     return Ubicacion.objects.filter(pk=pk, activa=True).first() if str(pk).isdigit() else None
 
 
+# --------------------------------------------------------------------------
+# Lotes de stock e historial de movimientos (solo admin)
+# --------------------------------------------------------------------------
+@solo_admin
+def lotes_lista(request):
+    """Todas las cargas en lote hechas, para revisarlas (quién, cuándo, modo, cuánto)."""
+    qs = LoteStock.objects.select_related("usuario")
+    texto = request.GET.get("q", "").strip()
+    modo = request.GET.get("modo", "")
+    usuario = request.GET.get("usuario", "")
+    desde, hasta = _fecha(request.GET.get("desde")), _fecha(request.GET.get("hasta"))
+    if texto:
+        cond = (Q(nota__icontains=texto) | Q(usuario__username__icontains=texto)
+                | Q(movimientos__producto__nombre__icontains=texto) | Q(movimientos__producto__codigo__icontains=texto))
+        if texto.lstrip("#").isdigit():
+            cond |= Q(pk=int(texto.lstrip("#")))
+        qs = qs.filter(cond).distinct()
+    if modo in (LoteStock.SUMAR, LoteStock.FIJAR):
+        qs = qs.filter(modo=modo)
+    else:
+        modo = ""
+    if usuario.isdigit():
+        qs = qs.filter(usuario_id=int(usuario))
+    if desde:
+        qs = qs.filter(creado__date__gte=desde)
+    if hasta:
+        qs = qs.filter(creado__date__lte=hasta)
+    lotes = list(qs.annotate(
+        n_productos=Count("movimientos__producto", distinct=True),
+        neto=Sum("movimientos__cantidad"),
+    )[:200])
+    return render(request, "panel/lotes_lista.html", {
+        "lotes": lotes, "modos": LoteStock.MODOS,
+        "usuarios": User.objects.filter(lotes_stock__isnull=False).distinct(),
+        "f": {"q": texto, "modo": modo, "usuario": usuario,
+              "desde": desde.isoformat() if desde else "", "hasta": hasta.isoformat() if hasta else ""},
+    })
+
+
+@solo_admin
+def lote_detalle(request, pk):
+    lote = get_object_or_404(LoteStock.objects.select_related("usuario"), pk=pk)
+    movs = list(lote.movimientos.select_related("producto", "ubicacion").order_by("producto__nombre", "ubicacion__orden"))
+    por_ubicacion = {}
+    for m in movs:
+        r = por_ubicacion.setdefault(m.ubicacion.pk, {"nombre": m.ubicacion.nombre, "unidades": 0, "productos": 0})
+        r["unidades"] += m.cantidad
+        r["productos"] += 1
+    return render(request, "panel/lote_detalle.html", {
+        "lote": lote, "movs": movs, "por_ubicacion": list(por_ubicacion.values()),
+        "unidades": sum(m.cantidad for m in movs),
+        "n_productos": len({m.producto_id for m in movs}),
+        "con_saldos": any(m.antes is not None for m in movs),  # las entradas antiguas recreadas no los tienen
+    })
+
+
+@solo_admin
+def lote_pdf(request, pk):
+    """PDF de una entrada de productos (lote): qué entró, dónde, y lo que había / quedó."""
+    lote = get_object_or_404(LoteStock.objects.select_related("usuario"), pk=pk)
+    respuesta = HttpResponse(generar_pdf_lote(lote), content_type="application/pdf")
+    respuesta["Content-Disposition"] = f'inline; filename="entrada-{lote.pk:05d}.pdf"'
+    return respuesta
+
+
+@solo_admin
+def movimientos_lista(request):
+    """Historial de TODOS los movimientos de stock (cargas en lote, ingresos sueltos, ventas,
+    traslados, ajustes), con filtros, para verificar cualquier cambio."""
+    qs = MovimientoStock.objects.select_related("producto", "ubicacion", "usuario", "lote")
+    texto = request.GET.get("q", "").strip()
+    tipo = request.GET.get("tipo", "")
+    ubicacion = request.GET.get("ubicacion", "")
+    usuario = request.GET.get("usuario", "")
+    desde, hasta = _fecha(request.GET.get("desde")), _fecha(request.GET.get("hasta"))
+    if texto:
+        qs = qs.filter(Q(producto__nombre__icontains=texto) | Q(producto__codigo__icontains=texto) | Q(nota__icontains=texto))
+    if tipo in dict(MovimientoStock.TIPOS):
+        qs = qs.filter(tipo=tipo)
+    else:
+        tipo = ""
+    if ubicacion.isdigit():
+        qs = qs.filter(ubicacion_id=int(ubicacion))
+    else:
+        ubicacion = ""
+    if usuario.isdigit():
+        qs = qs.filter(usuario_id=int(usuario))
+    if desde:
+        qs = qs.filter(creado__date__gte=desde)
+    if hasta:
+        qs = qs.filter(creado__date__lte=hasta)
+    entradas = qs.filter(cantidad__gt=0).aggregate(t=Sum("cantidad"))["t"] or 0
+    salidas = -(qs.filter(cantidad__lt=0).aggregate(t=Sum("cantidad"))["t"] or 0)
+    return render(request, "panel/movimientos_lista.html", {
+        "movs": qs[:300], "total": qs.count(), "entradas": entradas, "salidas": salidas,
+        "tipos": MovimientoStock.TIPOS, "ubicaciones": Ubicacion.objects.all(),
+        "usuarios": User.objects.filter(movimientostock__isnull=False).distinct(),
+        "f": {"q": texto, "tipo": tipo, "ubicacion": ubicacion, "usuario": usuario,
+              "desde": desde.isoformat() if desde else "", "hasta": hasta.isoformat() if hasta else ""},
+    })
+
+
 @solo_admin
 @require_POST
 def stock_ingreso(request, pk):
@@ -260,8 +386,14 @@ def stock_ingreso(request, pk):
     try:
         if ub is None or cant is None:
             raise ErrorNegocio("Elige el lugar y escribe una cantidad válida.")
-        servicios.registrar_ingreso(producto, ub, cant, request.user, request.POST.get("nota", "").strip())
-        messages.success(request, f"Se agregaron {cant} unidades en {ub.nombre}.")
+        if cant <= 0:
+            raise ErrorNegocio("La cantidad debe ser mayor que 0.")
+        # Cada ingreso queda como una «entrada» (lote de 1 producto): se puede revisar e imprimir en PDF.
+        lote = servicios.carga_masiva([(producto, ub, cant)], "sumar", request.user,
+                                      request.POST.get("nota", "").strip(), origen="Ingreso")
+        messages.success(request, f"Se agregaron {cant} unidades en {ub.nombre}. Entrada #{lote.pk}: "
+                                  "aquí puedes verificarla e imprimirla en PDF.")
+        return redirect("panel:lote_detalle", pk=lote.pk)
     except ErrorNegocio as e:
         messages.error(request, str(e))
     return redirect("panel:stock_producto", pk=pk)

@@ -1,0 +1,37 @@
+{% extends "panel/base_panel.html" %}
+{% block titulo %}Entradas de stock{% endblock %}
+{% block contenido %}
+<h1>Entradas de stock (lotes)</h1>
+<p class="p-soft">Cada carga en lote y cada ingreso suelto queda aquí, y se puede imprimir en PDF. Cada vez que guardas una <a href="{% url 'panel:stock_carga' %}">carga en lote</a> queda aquí. Abre uno para ver, producto por producto, lo que había y lo que quedó.
+  · <a href="{% url 'panel:movimientos' %}">Ver todos los movimientos (ingresos sueltos, ventas, traslados, ajustes)</a></p>
+
+<form class="p-filtros" method="get">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Buscar por N° de lote, producto, código, nota o usuario…" autocomplete="off">
+  <select name="modo" aria-label="Modo">
+    <option value="">Sumar y fijar</option>
+    {% for clave, etiqueta in modos %}<option value="{{ clave }}" {% if f.modo == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+  </select>
+  <select name="usuario" aria-label="Usuario"><option value="">Todos los usuarios</option>
+    {% for u in usuarios %}<option value="{{ u.pk }}" {% if f.usuario == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>{% endfor %}
+  </select>
+  <label>Desde <input type="date" name="desde" value="{{ f.desde }}"></label>
+  <label>Hasta <input type="date" name="hasta" value="{{ f.hasta }}"></label>
+  <button class="p-btn p-btn-sec" type="submit">Filtrar</button>
+  {% if f.q or f.modo or f.usuario or f.desde or f.hasta %}<a class="p-btn p-btn-sec" href="{% url 'panel:lotes' %}">Limpiar</a>{% endif %}
+</form>
+
+<div class="p-lista">
+{% for l in lotes %}
+  <div class="p-fila-lote">
+  <a class="p-fila-venta" href="{% url 'panel:lote_detalle' l.pk %}">
+    <div><strong>Entrada #{{ l.pk }}</strong> <span class="p-soft">{{ l.creado|date:"d/m/Y H:i" }}</span>
+      <span class="p-tag {% if l.modo == 'fijar' %}warn{% endif %}">{{ l.get_modo_display|upper }}</span><br>
+      <span class="p-soft">{{ l.usuario.username|default:"—" }} · {{ l.n_productos }} producto{{ l.n_productos|pluralize }} · {{ l.aplicados }} cantidad{{ l.aplicados|pluralize:",es" }}{% if l.sin_cambio %} (+{{ l.sin_cambio }} sin cambio){% endif %}</span>
+      {% if l.nota %}<br><span class="p-codigos">{{ l.nota }}</span>{% endif %}</div>
+    <div class="p-monto {% if l.neto and l.neto < 0 %}neg{% endif %}">{{ l.neto|default:0|stringformat:"+d" }} unid.</div>
+  </a>
+  <a class="p-btn p-btn-sec p-pdf" href="{% url 'panel:lote_pdf' l.pk %}" target="_blank" rel="noopener" title="Imprimir esta entrada en PDF">🖨 PDF</a>
+  </div>
+{% empty %}<p class="p-soft">{% if f.q or f.modo or f.usuario or f.desde or f.hasta %}No hay lotes con esos filtros. <a href="{% url 'panel:lotes' %}">Quitar los filtros</a>{% else %}Aún no hiciste ninguna carga en lote.{% endif %}</p>{% endfor %}
+</div>
+{% endblock %}

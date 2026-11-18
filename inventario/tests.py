@@ -14,7 +14,7 @@ from django.utils import timezone
 from catalogo.models import Atributo, Categoria, ImagenProducto, Producto, ValorAtributo
 
 from . import catalogo_pdf, servicios
-from .models import Cotizacion, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta
+from .models import Cotizacion, LoteStock, MovimientoStock, PerfilVendedor, ReglaDescuento, Stock, Ubicacion, Venta
 from .servicios import ErrorNegocio
 
 User = get_user_model()
@@ -1282,7 +1282,8 @@ class CargaMasivaTests(Base):
         r = self.post({"modo": "sumar", "nota": "lote 1",
                        f"c_{self.p1.pk}_{self.casa.pk}": "5", f"c_{self.p1.pk}_{self.local.pk}": "3",
                        f"c_{self.p2.pk}_{self.casa.pk}": "10", f"c_{self.p2.pk}_{self.local.pk}": ""})
-        self.assertRedirects(r, reverse("panel:stock"))
+        lote = LoteStock.objects.get()
+        self.assertRedirects(r, reverse("panel:lote_detalle", args=[lote.pk]))
         self.assertEqual(self.stock(self.p1, self.casa), 7)
         self.assertEqual(self.stock(self.p1, self.local), 3)
         self.assertEqual(self.stock(self.p2, self.casa), 10)
@@ -1290,6 +1291,7 @@ class CargaMasivaTests(Base):
         m = MovimientoStock.objects.filter(producto=self.p2).get()
         self.assertEqual((m.tipo, m.usuario), (MovimientoStock.INICIAL, self.admin))
         self.assertIn("lote 1", m.nota)
+        self.assertEqual(m.lote, lote)
         self.assertEqual(MovimientoStock.objects.filter(producto=self.p1, tipo=MovimientoStock.INGRESO).count(), 1)
 
     def test_sumar_compensa_stock_negativo(self):
@@ -1330,11 +1332,277 @@ class CargaMasivaTests(Base):
         self.assertEqual(r.status_code, 302)
         self.assertEqual(self.stock(self.p1, self.casa), 1)
 
+    def test_cargas_sucesivas_del_mismo_producto_se_acumulan(self):
+        k = f"c_{self.p1.pk}_{self.casa.pk}"
+        for esperado in (5, 10, 15):
+            self.post({"modo": "sumar", k: "5"})
+            self.assertEqual(self.stock(self.p1, self.casa), esperado)
+        self.assertEqual(LoteStock.objects.count(), 3)
+
+    def test_mismo_producto_y_ubicacion_repetido_en_un_lote_se_suma(self):
+        lote = servicios.carga_masiva(
+            [(self.p1, self.casa, 5), (self.p1, self.casa, 3), (self.p2, self.casa, 1)], "sumar", self.admin)
+        self.assertEqual(self.stock(self.p1, self.casa), 8)
+        self.assertEqual(lote.aplicados, 2)
+        self.assertEqual(lote.movimientos.filter(producto=self.p1).count(), 1)
+
+    def test_movimientos_guardan_antes_y_despues(self):
+        servicios.registrar_ingreso(self.p1, self.casa, 4, self.admin)
+        self.post({"modo": "sumar", f"c_{self.p1.pk}_{self.casa.pk}": "6"})
+        m = MovimientoStock.objects.filter(lote__isnull=False).get()
+        self.assertEqual((m.antes, m.cantidad, m.despues), (4, 6, 10))
+        self.post({"modo": "fijar", f"c_{self.p1.pk}_{self.casa.pk}": "3"})
+        m = MovimientoStock.objects.filter(tipo=MovimientoStock.AJUSTE).get()
+        self.assertEqual((m.antes, m.despues), (10, 3))
+
+    def test_lote_registra_modo_usuario_y_sin_cambio(self):
+        servicios.registrar_ingreso(self.p2, self.casa, 4, self.admin)
+        self.post({"modo": "fijar", "nota": "conteo", f"c_{self.p2.pk}_{self.casa.pk}": "4",
+                   f"c_{self.p1.pk}_{self.casa.pk}": "2"})
+        lote = LoteStock.objects.get()
+        self.assertEqual((lote.modo, lote.usuario, lote.nota, lote.aplicados, lote.sin_cambio),
+                         ("fijar", self.admin, "conteo", 1, 1))
+
+    def test_lista_y_detalle_de_lotes_solo_admin(self):
+        lote = servicios.carga_masiva([(self.p1, self.casa, 5)], "sumar", self.admin, "octubre")
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:lotes"))
+        self.assertContains(r, f"Entrada #{lote.pk}")
+        self.assertContains(r, "octubre")
+        r = self.client.get(reverse("panel:lote_detalle", args=[lote.pk]))
+        self.assertContains(r, "Pop it")
+        self.assertContains(r, "+5")
+        self.assertEqual(self.client.get(reverse("panel:lotes") + "?q=Pop").status_code, 200)
+        self.assertContains(self.client.get(reverse("panel:lotes") + "?q=Cubo"), "No hay lotes")
+        self.client.force_login(self.ana)
+        for nombre, args in (("lotes", []), ("lote_detalle", [lote.pk]), ("lote_pdf", [lote.pk]), ("movimientos", [])):
+            self.assertEqual(self.client.get(reverse(f"panel:{nombre}", args=args)).status_code, 403)
+
+    def test_movimientos_filtra_y_muestra_lote(self):
+        lote = servicios.carga_masiva([(self.p1, self.casa, 5)], "sumar", self.admin)
+        servicios.registrar_ingreso(self.p2, self.local, 2, self.admin)
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:movimientos"))
+        self.assertContains(r, f"Entrada #{lote.pk}")
+        self.assertContains(r, "Cubo")
+        r = self.client.get(reverse("panel:movimientos") + "?q=Cubo")
+        self.assertContains(r, "Cubo")
+        self.assertNotContains(r, "Pop it")
+        self.assertEqual(self.client.get(reverse("panel:movimientos") + "?desde=basura&tipo=x&ubicacion=y").status_code, 200)
+
+    def test_marca_y_avisa_nombres_repetidos(self):
+        dup = Producto.objects.create(nombre="  pop IT ", precio=D("10"), categoria=self.cat)
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:stock_carga"))
+        self.assertContains(r, "NOMBRE REPETIDO")
+        self.assertContains(r, "data-c-repetidos")
+        r = self.client.post(reverse("panel:stock_carga"), {"modo": "sumar", f"c_{dup.pk}_{self.casa.pk}": "2"}, follow=True)
+        self.assertContains(r, "MISMO nombre")
+        self.assertEqual(self.stock(dup, self.casa), 2)
+        self.assertEqual(self.stock(self.p1, self.casa), 0)
+
+    def test_sin_repetidos_no_hay_marca(self):
+        self.client.force_login(self.admin)
+        self.assertNotContains(self.client.get(reverse("panel:stock_carga")), "NOMBRE REPETIDO")
+
+    def test_pdf_de_la_entrada(self):
+        lote = servicios.carga_masiva([(self.p1, self.casa, 5), (self.p2, self.local, 3)], "sumar", self.admin, "octubre")
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:lote_pdf", args=[lote.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+        self.assertIn("entrada-%05d.pdf" % lote.pk, r["Content-Disposition"])
+        self.assertTrue(r.content.startswith(b"%PDF"))
+        self.assertContains(self.client.get(reverse("panel:lote_detalle", args=[lote.pk])), reverse("panel:lote_pdf", args=[lote.pk]))
+        self.assertContains(self.client.get(reverse("panel:lotes")), reverse("panel:lote_pdf", args=[lote.pk]))
+
+    def test_pdf_con_muchas_filas_usa_varias_hojas_y_modo_fijar(self):
+        productos = [Producto.objects.create(nombre=f"Juguete {i}", precio=D("5")) for i in range(120)]
+        lote = servicios.carga_masiva([(p, self.casa, i + 1) for i, p in enumerate(productos)], "sumar", self.admin)
+        self.client.force_login(self.admin)
+        pdf = self.client.get(reverse("panel:lote_pdf", args=[lote.pk])).content
+        self.assertGreater(pdf.count(b"/Type /Page\n"), 1)
+        vacio = servicios.carga_masiva([(productos[0], self.casa, 1)], "fijar", self.admin)  # ya era 1: sin movimientos
+        self.assertEqual(vacio.sin_cambio, 1)
+        self.assertEqual(self.client.get(reverse("panel:lote_pdf", args=[vacio.pk])).status_code, 200)
+
+    def test_ingreso_suelto_queda_como_entrada_imprimible(self):
+        self.client.force_login(self.admin)
+        r = self.client.post(reverse("panel:stock_ingreso", args=[self.p1.pk]),
+                             {"ubicacion": self.casa.pk, "cantidad": "7", "nota": "regalo"})
+        lote = LoteStock.objects.get()
+        self.assertRedirects(r, reverse("panel:lote_detalle", args=[lote.pk]))
+        self.assertEqual(self.stock(self.p1, self.casa), 7)
+        m = lote.movimientos.get()
+        self.assertEqual((m.tipo, m.antes, m.despues), (MovimientoStock.INICIAL, 0, 7))
+        self.assertIn("Ingreso #", m.nota)
+        self.assertEqual(self.client.get(reverse("panel:lote_pdf", args=[lote.pk])).status_code, 200)
+        # una cantidad inválida no deja ninguna entrada a medias
+        r = self.client.post(reverse("panel:stock_ingreso", args=[self.p1.pk]), {"ubicacion": self.casa.pk, "cantidad": "0"})
+        self.assertEqual(LoteStock.objects.count(), 1)
+
+    def test_las_sumas_que_se_ven_coinciden_con_la_base(self):
+        servicios.registrar_venta(self.ana, [self.item(self.p2, self.casa, 3)])      # p2 queda en -3 (por cubrir)
+        servicios.carga_masiva([(self.p1, self.casa, 5), (self.p1, self.local, 2)], "sumar", self.admin)
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:stock"))
+        por_ub = {x["ubicacion"].nombre: x for x in r.context["resumen_ub"]}
+        self.assertEqual(por_ub["Casa"]["unidades"], 5 - 3)        # neto = lo que dice la base
+        self.assertEqual(por_ub["Casa"]["disponibles"], 5)
+        self.assertEqual(por_ub["Casa"]["por_cubrir"], 3)
+        self.assertEqual(por_ub["Local"]["unidades"], 2)
+        real = sum(st.cantidad for st in Stock.objects.filter(ubicacion=self.casa))
+        self.assertEqual(por_ub["Casa"]["unidades"], real)
+
     def test_boton_de_carga_solo_para_admin(self):
         self.client.force_login(self.admin)
         self.assertContains(self.client.get(reverse("panel:stock")), reverse("panel:stock_carga"))
         self.client.force_login(self.ana)
         self.assertNotContains(self.client.get(reverse("panel:stock")), reverse("panel:stock_carga"))
+
+
+class RecrearLotesAntiguosTests(Base):
+    """Migración 0008: ingresos antiguos (sin lote) → entradas por día local + ubicación."""
+
+    def setUp(self):
+        super().setUp()
+        import importlib
+        self.mod = importlib.import_module("inventario.migrations.0008_recrear_lotes_antiguos")
+
+    def antiguo(self, producto, ubicacion, cantidad, cuando, tipo="ingreso", usuario=None, sin_stock=False):
+        """Crea un movimiento «como los de antes»: sin lote ni antes/después, con fecha elegida."""
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        m = MovimientoStock.objects.create(producto=producto, ubicacion=ubicacion, cantidad=cantidad, tipo=tipo,
+                                           usuario=usuario or self.admin)
+        fecha = datetime.fromisoformat(cuando).replace(tzinfo=ZoneInfo("America/La_Paz"))
+        MovimientoStock.objects.filter(pk=m.pk).update(creado=fecha)
+        if not sin_stock:
+            s, _ = Stock.objects.get_or_create(producto=producto, ubicacion=ubicacion)
+            Stock.objects.filter(pk=s.pk).update(cantidad=s.cantidad + cantidad)
+        return MovimientoStock.objects.get(pk=m.pk)
+
+    def correr(self, simular=False):
+        return self.mod.recrear_lotes(MovimientoStock, LoteStock, simular=simular)
+
+    def test_agrupa_por_dia_y_ubicacion(self):
+        a = self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00", "inicial")
+        b = self.antiguo(self.p2, self.casa, 3, "2026-10-01T15:00")          # mismo día y lugar → mismo lote
+        c = self.antiguo(self.p1, self.local, 2, "2026-10-01T10:00", "inicial")  # otro lugar → otro lote
+        d = self.antiguo(self.p1, self.casa, 4, "2026-10-02T09:00")          # otro día → otro lote
+        r = self.correr()
+        self.assertEqual((r["lotes"], r["movimientos"]), (3, 4))
+        for m in (a, b, c, d):
+            m.refresh_from_db()
+        self.assertEqual(a.lote, b.lote)
+        self.assertNotEqual(a.lote, c.lote)
+        self.assertNotEqual(a.lote, d.lote)
+        lote = a.lote
+        self.assertEqual((lote.modo, lote.aplicados, lote.sin_cambio), ("sumar", 2, 0))
+        self.assertTrue(lote.nota.startswith(self.mod.MARCA))
+        self.assertEqual(lote.creado, a.creado)  # la hora del primer ingreso, no la de la migración
+        self.assertEqual(lote.usuario, self.admin)
+
+    def test_el_dia_es_el_local_de_bolivia_no_utc(self):
+        # 23:30 en La Paz = 03:30 UTC del día siguiente; debe agruparse con el resto del 1 de octubre
+        a = self.antiguo(self.p1, self.casa, 5, "2026-10-01T08:00")
+        b = self.antiguo(self.p2, self.casa, 3, "2026-10-01T23:30")
+        self.correr()
+        a.refresh_from_db(); b.refresh_from_db()
+        self.assertEqual(a.lote, b.lote)
+
+    def test_solo_agrupa_ingresos_y_no_toca_el_stock(self):
+        self.antiguo(self.p1, self.casa, 10, "2026-10-01T09:00", "inicial")
+        servicios.registrar_venta(self.ana, [self.item(self.p1, self.casa, 4)])
+        servicios.trasladar(self.p1, self.casa, self.local, 2, self.admin)
+        servicios.ajustar(self.p1, self.casa, 3, self.admin)
+        antes_stock = {(s.producto_id, s.ubicacion_id): s.cantidad for s in Stock.objects.all()}
+        n_mov = MovimientoStock.objects.count()
+        r = self.correr()
+        self.assertEqual(r["movimientos"], 1)                       # solo el inicial
+        self.assertEqual(MovimientoStock.objects.count(), n_mov)    # no se crean ni borran movimientos
+        self.assertEqual({(s.producto_id, s.ubicacion_id): s.cantidad for s in Stock.objects.all()}, antes_stock)
+        self.assertFalse(MovimientoStock.objects.exclude(tipo__in=("inicial", "ingreso")).filter(lote__isnull=False).exists())
+
+    def test_los_antiguos_quedan_sin_habia_y_quedo(self):
+        a = self.antiguo(self.p1, self.casa, 10, "2026-10-01T09:00", "inicial")
+        self.correr()
+        a.refresh_from_db()
+        self.assertIsNotNone(a.lote)
+        self.assertEqual((a.antes, a.despues), (None, None))
+        self.assertEqual(self.stock(self.p1, self.casa), 10)
+
+    def test_entrada_sin_saldos_oculta_esas_columnas_en_pantalla_y_pdf(self):
+        self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00", "inicial")
+        self.correr()
+        lote = LoteStock.objects.get()
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse("panel:lote_detalle", args=[lote.pk]))
+        self.assertFalse(r.context["con_saldos"])
+        self.assertNotContains(r, "Había")
+        self.assertNotContains(r, "Quedó")
+        self.assertContains(r, "Cantidad")
+        pdf = self.client.get(reverse("panel:lote_pdf", args=[lote.pk]))
+        self.assertEqual((pdf.status_code, pdf.content[:4]), (200, b"%PDF"))
+        # una entrada nueva (con saldos) sí los muestra
+        nueva = servicios.carga_masiva([(self.p2, self.casa, 2)], "sumar", self.admin)
+        r = self.client.get(reverse("panel:lote_detalle", args=[nueva.pk]))
+        self.assertTrue(r.context["con_saldos"])
+        self.assertContains(r, "Quedó")
+
+    def test_varios_usuarios_quedan_anotados(self):
+        self.antiguo(self.p1, self.casa, 1, "2026-10-01T09:00", usuario=self.ana)
+        self.antiguo(self.p2, self.casa, 1, "2026-10-01T10:00", usuario=self.ana)
+        self.antiguo(self.p2, self.casa, 1, "2026-10-01T11:00", usuario=self.admin)
+        self.correr()
+        lote = LoteStock.objects.get()
+        self.assertEqual(lote.usuario, self.ana)        # el que más ingresó
+        self.assertIn("ana", lote.nota)
+        self.assertIn("admin", lote.nota)
+
+    def test_simular_no_escribe_y_repetir_no_duplica(self):
+        self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00")
+        r = self.correr(simular=True)
+        self.assertEqual(r["lotes"], 1)
+        self.assertEqual(LoteStock.objects.count(), 0)
+        self.correr()
+        self.assertEqual(LoteStock.objects.count(), 1)
+        self.assertEqual(self.correr()["lotes"], 0)      # ya no quedan ingresos sueltos
+        self.assertEqual(LoteStock.objects.count(), 1)
+
+    def test_no_toca_los_lotes_nuevos(self):
+        servicios.carga_masiva([(self.p1, self.casa, 5)], "sumar", self.admin)
+        self.assertEqual(self.correr()["lotes"], 0)
+        self.assertEqual(LoteStock.objects.count(), 1)
+
+    def test_la_entrada_recreada_se_ve_y_se_imprime(self):
+        self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00", "inicial")
+        self.correr()
+        lote = LoteStock.objects.get()
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(reverse("panel:lotes")), f"Entrada #{lote.pk}")
+        self.assertContains(self.client.get(reverse("panel:lote_detalle", args=[lote.pk])), "Pop it")
+        r = self.client.get(reverse("panel:lote_pdf", args=[lote.pk]))
+        self.assertEqual((r.status_code, r.content[:4]), (200, b"%PDF"))
+
+    def test_se_puede_revertir(self):
+        a = self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00")
+        self.correr()
+        mias = LoteStock.objects.filter(nota__startswith=self.mod.MARCA)
+        MovimientoStock.objects.filter(lote__in=mias).update(lote=None)
+        mias.delete()
+        a.refresh_from_db()
+        self.assertEqual((a.lote, a.antes, a.despues), (None, None, None))
+        self.assertEqual(self.stock(self.p1, self.casa), 5)
+
+    def test_comando_simular(self):
+        from io import StringIO
+        from django.core.management import call_command
+        self.antiguo(self.p1, self.casa, 5, "2026-10-01T09:00")
+        out = StringIO()
+        call_command("recrear_lotes_antiguos", "--simular", stdout=out)
+        self.assertIn("Se crearían 1 entradas", out.getvalue())
+        self.assertEqual(LoteStock.objects.count(), 0)
 
 
 class VistasPorUbicacionTests(Base):

@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
-    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, MovimientoStock,
+    Cotizacion, CotizacionItem, CotizacionItemPersonalizado, FotoItemPersonalizado, LoteStock, MovimientoStock,
     ReglaDescuento, Stock, Venta, VentaItem,
 )
 
@@ -143,7 +143,7 @@ def _stock_bloqueado(producto, ubicacion):
 
 
 @transaction.atomic
-def mover_stock(producto, ubicacion, delta, tipo, usuario=None, nota="", venta=None, permitir_negativo=False):
+def mover_stock(producto, ubicacion, delta, tipo, usuario=None, nota="", venta=None, permitir_negativo=False, lote=None):
     """Suma/resta stock en una ubicación y deja el rastro en el historial.
     Solo las ventas pueden dejar el stock en negativo (`permitir_negativo`)."""
     if delta == 0:
@@ -157,21 +157,22 @@ def mover_stock(producto, ubicacion, delta, tipo, usuario=None, nota="", venta=N
             f"No hay suficiente «{producto.nombre}» en {ubicacion.nombre} "
             f"(hay {stock.cantidad}, se pidió {-delta})."
         )
+    antes = stock.cantidad
     stock.cantidad += delta
     stock.save(update_fields=["cantidad"])
     return MovimientoStock.objects.create(
         producto=producto, ubicacion=ubicacion, cantidad=delta, tipo=tipo,
-        usuario=usuario, nota=nota, venta=venta,
+        usuario=usuario, nota=nota, venta=venta, lote=lote, antes=antes, despues=stock.cantidad,
     )
 
 
-def registrar_ingreso(producto, ubicacion, cantidad, usuario, nota=""):
+def registrar_ingreso(producto, ubicacion, cantidad, usuario, nota="", lote=None):
     """Primer ingreso en un lugar = 'cantidad inicial'; los siguientes = 'ingreso'."""
     if cantidad <= 0:
         raise ErrorNegocio("La cantidad debe ser mayor que 0.")
     es_inicial = not MovimientoStock.objects.filter(producto=producto, ubicacion=ubicacion).exists()
     tipo = MovimientoStock.INICIAL if es_inicial else MovimientoStock.INGRESO
-    return mover_stock(producto, ubicacion, cantidad, tipo, usuario, nota)
+    return mover_stock(producto, ubicacion, cantidad, tipo, usuario, nota, lote=lote)
 
 
 @transaction.atomic
@@ -184,7 +185,7 @@ def trasladar(producto, origen, destino, cantidad, usuario, nota=""):
     mover_stock(producto, destino, cantidad, MovimientoStock.TRASLADO, usuario, f"Desde {origen.nombre}. {nota}".strip())
 
 
-def ajustar(producto, ubicacion, nueva_cantidad, usuario, nota=""):
+def ajustar(producto, ubicacion, nueva_cantidad, usuario, nota="", lote=None):
     """Corrige el stock a un número exacto (conteo físico, roturas, etc.)."""
     if nueva_cantidad < 0:
         raise ErrorNegocio("La cantidad no puede ser negativa.")
@@ -194,7 +195,7 @@ def ajustar(producto, ubicacion, nueva_cantidad, usuario, nota=""):
         if delta == 0:
             raise ErrorNegocio("Esa ya es la cantidad registrada.")
         return mover_stock(producto, ubicacion, delta, MovimientoStock.AJUSTE, usuario,
-                           f"Ajuste de {actual} a {nueva_cantidad}. {nota}".strip())
+                           f"Ajuste de {actual} a {nueva_cantidad}. {nota}".strip(), lote=lote)
 
 
 def repartir_total(pesos, total):
@@ -216,18 +217,33 @@ def repartir_total(pesos, total):
 
 
 @transaction.atomic
-def carga_masiva(cambios, modo, usuario, nota=""):
+def carga_masiva(cambios, modo, usuario, nota="", origen=None):
     """Carga de stock de muchos productos a la vez.
 
     `cambios`: lista de (producto, ubicacion, cantidad).
     `modo`: "sumar" (ingreso: la cantidad se suma) o "fijar" (conteo: queda esa cantidad exacta).
-    Todo o nada: si algo falla, no se guarda nada. Devuelve (aplicados, sin_cambio).
-    Cada movimiento queda en el historial igual que si se hiciera uno por uno."""
-    aplicados = sin_cambio = 0
+    Todo o nada: si algo falla, no se guarda nada. Devuelve el `LoteStock` creado, que agrupa todos los
+    movimientos (cada uno con lo que había antes y lo que quedó después) para poder revisarlo luego.
+
+    Si el mismo producto y ubicación vienen repetidos en `cambios`, en modo «sumar» se SUMAN entre sí
+    (se juntan en un solo movimiento); en modo «fijar» vale el último valor."""
+    modo = LoteStock.FIJAR if modo == "fijar" else LoteStock.SUMAR
+    etiqueta = origen or ("Conteo en lote" if modo == LoteStock.FIJAR else "Carga en lote")
+    lote = LoteStock.objects.create(usuario=usuario, modo=modo, nota=(nota or "")[:200])
+
+    juntos = {}  # (producto, ubicacion) -> cantidad; conserva el orden de llegada
     for producto, ubicacion, cantidad in cambios:
-        if modo == "fijar":
+        clave = (producto.pk, ubicacion.pk)
+        if clave in juntos and modo == LoteStock.SUMAR:
+            juntos[clave] = (producto, ubicacion, juntos[clave][2] + cantidad)
+        else:
+            juntos[clave] = (producto, ubicacion, cantidad)
+
+    aplicados = sin_cambio = 0
+    for producto, ubicacion, cantidad in juntos.values():
+        if modo == LoteStock.FIJAR:
             try:
-                ajustar(producto, ubicacion, cantidad, usuario, f"Conteo en lote. {nota}".strip())
+                ajustar(producto, ubicacion, cantidad, usuario, f"{etiqueta} #{lote.pk}. {nota}".strip(), lote=lote)
                 aplicados += 1
             except ErrorNegocio as e:
                 if "ya es la cantidad" in str(e):
@@ -235,9 +251,11 @@ def carga_masiva(cambios, modo, usuario, nota=""):
                 else:
                     raise
         else:
-            registrar_ingreso(producto, ubicacion, cantidad, usuario, f"Carga en lote. {nota}".strip())
+            registrar_ingreso(producto, ubicacion, cantidad, usuario, f"{etiqueta} #{lote.pk}. {nota}".strip(), lote=lote)
             aplicados += 1
-    return aplicados, sin_cambio
+    lote.aplicados, lote.sin_cambio = aplicados, sin_cambio
+    lote.save(update_fields=["aplicados", "sin_cambio"])
+    return lote
 
 
 # --------------------------------------------------------------------------

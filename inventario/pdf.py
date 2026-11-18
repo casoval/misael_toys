@@ -1,6 +1,7 @@
-"""PDFs del panel: cotización (para el cliente) y recibo de venta (respaldo).
+"""PDFs del panel: cotización (para el cliente), recibo de venta (respaldo) y entrada de productos (interno).
 
-Importante: ninguno incluye stock ni ubicaciones, solo lo que un cliente puede ver.
+Importante: la cotización y el recibo no incluyen stock ni ubicaciones (solo lo que un cliente puede ver);
+el PDF de entrada de productos es de uso INTERNO y sí muestra ubicaciones y cantidades.
 Todo el dinero va en enteros (sin decimales)."""
 import logging
 import urllib.request
@@ -541,4 +542,75 @@ def generar_pdf_recibo(venta):
     pie = _dibujar_pie(config)
     extra = {"canvasmaker": _canvas_con_marca("ANULADA")} if venta.anulada else {}
     doc.build([marco], onFirstPage=pie, onLaterPages=pie, **extra)
+    return buf.getvalue()
+
+
+# --------------------------------------------------------------------------
+# Entrada de productos (lote de stock) — documento INTERNO
+# --------------------------------------------------------------------------
+def generar_pdf_lote(lote):
+    """PDF de una entrada de productos: cabecera con N°, fecha, quién y modo; tabla con producto,
+    ubicación, lo que había, el cambio y lo que quedó; totales por ubicación y líneas de firma.
+    Puede tener muchas filas: se reparte en varias hojas (la cabecera de la tabla se repite)."""
+    config = ConfiguracionSitio.get()
+    st = _estilos()
+    buf = BytesIO()
+    numero = f"{lote.pk:05d}"
+    doc = _documento(buf, f"Entrada de productos {numero}", config)
+
+    el = [_cabecera(config, st, logo_alto_mm=26, logo_ancho_mm=40), Spacer(1, 4 * mm)]
+    fecha = timezone.localtime(lote.creado)
+    el += [Paragraph(f"ENTRADA DE PRODUCTOS N° {numero}", st["titulo"]), Spacer(1, 2 * mm)]
+    modo = "Conteo físico (la cantidad quedó fijada)" if lote.modo == lote.FIJAR else "Suma al stock actual"
+    datos = [f"Fecha: {fecha:%d/%m/%Y}  ·  Hora: {fecha:%H:%M}",
+             f"Registró: <b>{_esc(lote.usuario.username) if lote.usuario else '—'}</b>",
+             f"Tipo: <b>{modo}</b>"]
+    if lote.nota:
+        datos.append(f"Nota: {_esc(lote.nota)}")
+    el += [Paragraph("<br/>".join(datos), st["normal"]), Spacer(1, 4 * mm)]
+
+    movs = list(lote.movimientos.select_related("producto", "ubicacion").order_by("producto__nombre", "ubicacion__orden"))
+    con_saldos = any(m.antes is not None for m in movs)  # las entradas antiguas recreadas no traen Había/Quedó
+    encabezado = ["N°", "Cód.", "Producto", "Ubicación"] + (["Había", "Cambio", "Quedó"] if con_saldos else ["Cantidad"])
+    filas = [encabezado]
+    por_ubicacion = {}
+    for n, m in enumerate(movs, start=1):
+        fila = [str(n), m.producto.codigo or "—", Paragraph(_esc(m.producto.nombre), st["normal"]),
+                Paragraph(_esc(m.ubicacion.nombre), st["normal"])]
+        fila += ([str(m.antes) if m.antes is not None else "—", f"{m.cantidad:+d}",
+                  str(m.despues) if m.despues is not None else "—"] if con_saldos else [f"{m.cantidad:+d}"])
+        filas.append(fila)
+        por_ubicacion[m.ubicacion.nombre] = por_ubicacion.get(m.ubicacion.nombre, 0) + m.cantidad
+    if not movs:
+        filas.append(["", "", Paragraph("Sin movimientos (todo ya tenía esas cantidades).", st["chico"])] + [""] * (len(encabezado) - 3))
+    anchos = ([9 * mm, 17 * mm, 58 * mm, 31 * mm, 18 * mm, 18 * mm, 18 * mm] if con_saldos
+              else [10 * mm, 20 * mm, 85 * mm, 36 * mm, 18 * mm])
+    tabla = _tabla_items(filas, anchos)
+    tabla.setStyle(TableStyle([("ALIGN", (0, 0), (1, -1), "CENTER"), ("ALIGN", (2, 0), (3, -1), "LEFT"),
+                               ("FONTNAME", (4, 1), (-1, -1), "Helvetica-Bold") if not con_saldos
+                               else ("FONTNAME", (5, 1), (6, -1), "Helvetica-Bold")]))
+    el += [tabla, Spacer(1, 4 * mm)]
+
+    total = sum(m.cantidad for m in movs)
+    resumen = [[Paragraph(f"<b>Productos:</b> {len({m.producto_id for m in movs})}", st["normal"]),
+                Paragraph(f"<b>Cantidades:</b> {len(movs)}", st["normal"]),
+                Paragraph(f"<b>{'Diferencia neta' if lote.modo == lote.FIJAR else 'Total de unidades'}:</b> {total:+d}", st["normal"])]]
+    for nombre, u in por_ubicacion.items():
+        resumen.append([Paragraph(f"{_esc(nombre)}", st["normal"]), "", Paragraph(f"{u:+d} unid.", st["normal"])])
+    r = Table(resumen, colWidths=[60 * mm, 40 * mm, 69 * mm])
+    r.setStyle(TableStyle([("LINEABOVE", (0, 0), (-1, 0), 1, TEAL), ("TOPPADDING", (0, 0), (-1, -1), 2),
+                           ("BOTTOMPADDING", (0, 0), (-1, -1), 2), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
+    el += [KeepTogether([r])]
+
+    firmas = Table(
+        [["", "", ""], [Paragraph("Entregado por", st["chico"]), "", Paragraph("Recibido / verificado por", st["chico"])]],
+        colWidths=[70 * mm, 29 * mm, 70 * mm], rowHeights=[14 * mm, 5 * mm],
+    )
+    firmas.setStyle(TableStyle([("LINEBELOW", (0, 0), (0, 0), 0.6, SOFT), ("LINEBELOW", (2, 0), (2, 0), 0.6, SOFT),
+                                ("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 1)]))
+    el += [Spacer(1, 8 * mm), KeepTogether([firmas, Spacer(1, 4 * mm),
+           Paragraph("Documento interno de control de inventario.", st["chico"])])]
+
+    pie = _dibujar_pie(config)
+    doc.build(el, onFirstPage=pie, onLaterPages=pie)
     return buf.getvalue()

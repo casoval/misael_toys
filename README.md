@@ -165,6 +165,23 @@ público no lo conoce: el cliente nunca ve el stock. Vive en la app `inventario`
   stock negativo) o **Fijar** (conteo físico: queda esa cantidad). Incluye buscador, filtro por categoría,
   «solo sin stock», «solo los que estoy cambiando», relleno de una columna completa con un valor, `Enter` para
   bajar a la celda de abajo y contador de cambios.
+  - **Entradas / lotes y verificación** (solo admin, pestaña «Lotes», `/panel/lotes/`): cada «Guardar todo» (y cada ingreso suelto desde la ficha del producto) crea una **entrada** (lote)
+    (N°, fecha, quién, modo, nota). Al guardar se abre el detalle del lote con una tabla *Había → Cambio → Quedó*
+    por producto y ubicación. Antes de guardar, cada celda muestra «→ quedará X», se pide confirmación («vas a
+    SUMAR / FIJAR…») y el botón se bloquea para evitar doble envío. Los productos con **nombre repetido** (el nombre
+    no es único en el catálogo) se marcan «NOMBRE REPETIDO» y hay un filtro para encontrarlos: lo que cargas en uno
+    **no** se suma al otro. En `/panel/movimientos/` está el historial de TODOS los movimientos (ingresos, ventas,
+    traslados, ajustes) con filtros; el historial de cada producto también muestra «antes → después» y el lote.
+    **Cada entrada se imprime en PDF** (botón «🖨 Imprimir PDF», `/panel/lotes/<n>/pdf/`): N°, fecha, quién, tipo, tabla
+    Había → Cambio → Quedó, totales por ubicación y firmas; varias hojas si es larga. Es un documento interno (sí muestra
+    ubicaciones y cantidades). **Sumas en pantalla**: los chips por ubicación, el resumen «X unidades» y el pie de la tabla
+    usan ahora el mismo criterio (neto = igual que la base); lo vendido sin stock se ve aparte como «⚠ N por cubrir (hay M)».
+    Modelo: `LoteStock` (+ `MovimientoStock.lote/antes/despues`; hace falta `python manage.py migrate`).
+    **Ingresos antiguos**: la migración `0008` agrupa los ingresos y cantidades iniciales anteriores a los lotes en
+    entradas, una por **día (hora de Bolivia) + ubicación** (nota «Recreado de ingresos antiguos»). No calcula
+    «Había/Quedó» de lo antiguo (la pantalla y el PDF de esas entradas muestran solo «Cantidad»). No cambia ninguna
+    cantidad y es reversible. Para ver antes qué haría: `migrate inventario 0007` y luego
+    `python manage.py recrear_lotes_antiguos --simular`.
 - **Más información en Stock / Vender / Cotizar**: resumen por ubicación (unidades, productos con stock, por
   cubrir; se toca para filtrar), filtro de **estado del stock** (con stock, stock bajo (queda 1 unidad), agotado, sin stock aquí
   pero hay en otra ubicación, agotado en todas, por cubrir), y en Stock una **vista «Tabla»** con una columna

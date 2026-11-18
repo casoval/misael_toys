@@ -7,6 +7,8 @@
   const cat = form.querySelector("[data-c-cat]");
   const soloVacios = form.querySelector("[data-c-vacios]");
   const soloEscritos = form.querySelector("[data-c-escritos]");
+  const soloRepetidos = form.querySelector("[data-c-repetidos]");
+  const modoSel = () => (form.querySelector('input[name="modo"]:checked') || {}).value || "sumar";
   const contador = form.querySelector("[data-c-contador]");
   const visiblesEl = form.querySelector("[data-c-visibles]");
   const norm = (t) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -23,6 +25,7 @@
       if (ok && cat.value && d.categoria !== cat.value) ok = false;
       if (ok && soloVacios.checked && parseInt(d.total, 10) > 0) ok = false;
       if (ok && soloEscritos.checked && !escrita(f)) ok = false;
+      if (ok && soloRepetidos && soloRepetidos.checked && !d.repetido) ok = false;
       f.hidden = !ok;
       if (ok) n++;
     });
@@ -37,9 +40,24 @@
       : "Aún no escribiste nada.";
     form.querySelector("[data-c-guardar]").disabled = cambios === 0;
     filas.forEach((f) => f.classList.toggle("editada", escrita(f)));
+    previas();
   }
 
-  [q, cat, soloVacios, soloEscritos].forEach((e) => e.addEventListener("input", filtrar));
+  // Debajo de cada cantidad escrita: cómo quedará el stock (hay → quedará)
+  function previas() {
+    const fijar = modoSel() === "fijar";
+    form.querySelectorAll("[data-celda]").forEach((i) => {
+      const prev = i.parentElement.querySelector("[data-prev]");
+      const t = i.value.trim();
+      if (t === "" || !/^-?\d+$/.test(t)) { prev.hidden = true; return; }
+      const hay = parseInt(i.dataset.hay, 10), n = parseInt(t, 10);
+      prev.textContent = "→ quedará " + (fijar ? n : hay + n);
+      prev.hidden = false;
+    });
+  }
+  form.querySelectorAll('input[name="modo"]').forEach((r) => r.addEventListener("change", previas));
+
+  [q, cat, soloVacios, soloEscritos, soloRepetidos].filter(Boolean).forEach((e) => e.addEventListener("input", filtrar));
   form.addEventListener("input", (e) => { if (e.target.matches("[data-celda]")) { contar(); if (soloEscritos.checked) filtrar(); } });
 
   // Rellenar una columna entera (solo los productos que se ven ahora)
@@ -76,7 +94,15 @@
   window.addEventListener("beforeunload", (e) => {
     if (filas.some(escrita) && !form.dataset.enviando) { e.preventDefault(); e.returnValue = ""; }
   });
-  form.addEventListener("submit", () => { form.dataset.enviando = "1"; });
+  form.addEventListener("submit", (e) => {
+    if (form.dataset.enviando) { e.preventDefault(); return; }  // doble clic: no se envía dos veces
+    const cambios = filas.reduce((n, f) => n + celdasDe(f).filter((i) => i.value.trim() !== "").length, 0);
+    const prods = filas.filter(escrita).length;
+    const accion = modoSel() === "fijar" ? "FIJAR (el stock quedará exactamente en esas cantidades)" : "SUMAR (se agregan al stock actual)";
+    if (!confirm("Vas a " + accion + ":\n" + cambios + " cantidad(es) en " + prods + " producto(s).\n\n¿Guardar?")) { e.preventDefault(); return; }
+    form.dataset.enviando = "1";
+    form.querySelector("[data-c-guardar]").disabled = true;
+  });
 
   filtrar();
   contar();

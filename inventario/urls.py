@@ -11,6 +11,10 @@ urlpatterns = [
 
     path("", views.stock_lista, name="stock"),
     path("carga/", views.stock_carga, name="stock_carga"),
+    path("lotes/", views.lotes_lista, name="lotes"),
+    path("lotes/<int:pk>/", views.lote_detalle, name="lote_detalle"),
+    path("lotes/<int:pk>/pdf/", views.lote_pdf, name="lote_pdf"),
+    path("movimientos/", views.movimientos_lista, name="movimientos"),
     path("producto/<int:pk>/", views.stock_producto, name="stock_producto"),
     path("producto/<int:pk>/ingreso/", views.stock_ingreso, name="stock_ingreso"),
     path("producto/<int:pk>/traslado/", views.stock_traslado, name="stock_traslado"),

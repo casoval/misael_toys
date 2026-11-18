@@ -12,7 +12,7 @@
   <button type="button" class="p-rub {% if not r.propia and hay_otras %}otra{% endif %}" data-r-lugar="{{ r.ubicacion.pk }}" title="Toca para ver solo los productos que hay en {{ r.ubicacion.nombre }}">
     <span class="p-rub-n">{{ r.ubicacion.nombre }}{% if r.propia and hay_otras %} <i class="p-tag">mía</i>{% endif %}</span>
     <b>{{ r.unidades }}</b> <span class="p-soft">unid. · {{ r.productos }} de {{ total_productos }} prod.</span>
-    {% if r.por_cubrir %}<span class="p-rub-neg">⚠ {{ r.por_cubrir }} por cubrir</span>{% endif %}
+    {% if r.por_cubrir %}<span class="p-rub-neg" title="Hay {{ r.disponibles }} unidades en stock y {{ r.por_cubrir }} vendidas sin registrar: {{ r.disponibles }} − {{ r.por_cubrir }} = {{ r.unidades }}">⚠ {{ r.por_cubrir }} por cubrir (hay {{ r.disponibles }})</span>{% endif %}
   </button>
   {% endfor %}
 </div>

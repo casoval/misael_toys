@@ -1,0 +1,38 @@
+{% extends "panel/base_panel.html" %}
+{% block titulo %}Entrada #{{ lote.pk }}{% endblock %}
+{% block contenido %}
+<p><a href="{% url 'panel:lotes' %}">← Todos los lotes</a></p>
+<div class="p-titulo"><h1>Entrada #{{ lote.pk }} <span class="p-tag {% if lote.modo == 'fijar' %}warn{% endif %}">{{ lote.get_modo_display|upper }}</span></h1>
+  <a class="p-btn" href="{% url 'panel:lote_pdf' lote.pk %}" target="_blank" rel="noopener">🖨 Imprimir PDF</a></div>
+<p class="p-soft">{{ lote.creado|date:"d/m/Y H:i" }} · hecho por <b>{{ lote.usuario.username|default:"—" }}</b>{% if lote.nota %} · Nota: {{ lote.nota }}{% endif %}</p>
+
+<div class="p-kpis">
+  <div><span class="p-soft">Productos</span><b>{{ n_productos }}</b></div>
+  <div><span class="p-soft">Cantidades guardadas</span><b>{{ lote.aplicados }}</b></div>
+  <div><span class="p-soft">{% if lote.modo == 'fijar' %}Diferencia neta{% else %}Unidades sumadas{% endif %}</span><b>{{ unidades|stringformat:"+d" }}</b></div>
+</div>
+{% if lote.sin_cambio %}<p class="p-soft">{{ lote.sin_cambio }} cantidad{{ lote.sin_cambio|pluralize:",es" }} ya {{ lote.sin_cambio|pluralize:"era,eran" }} igual{{ lote.sin_cambio|pluralize:",es" }} a lo registrado, por eso no generaron movimiento.</p>{% endif %}
+
+{% if por_ubicacion|length > 1 %}
+<div class="p-card"><h2>Por ubicación</h2>
+  {% for r in por_ubicacion %}<div class="p-linea"><b>{{ r.nombre }}</b><span>{{ r.productos }} producto{{ r.productos|pluralize }}</span><span>{{ r.unidades|stringformat:"+d" }} unid.</span></div>{% endfor %}
+</div>
+{% endif %}
+
+<div class="p-tabla-wrap">
+<table class="p-tabla p-tabla-lote">
+  <thead><tr><th>Producto</th><th>Ubicación</th>{% if con_saldos %}<th class="t-num">Había</th>{% endif %}<th class="t-num">{% if con_saldos %}Cambio{% else %}Cantidad{% endif %}</th>{% if con_saldos %}<th class="t-num">Quedó</th>{% endif %}</tr></thead>
+  <tbody>
+  {% for m in movs %}
+    <tr>
+      <td>{% if m.producto.codigo %}<span class="p-prod-cod">{{ m.producto.codigo }}</span> {% endif %}<a href="{% url 'panel:stock_producto' m.producto_id %}"><b>{{ m.producto.nombre }}</b></a></td>
+      <td>{{ m.ubicacion.nombre }}</td>
+      {% if con_saldos %}<td class="t-num">{{ m.antes|default_if_none:"—" }}</td>{% endif %}
+      <td class="t-num {% if m.cantidad > 0 %}pos{% else %}neg{% endif %}"><b>{{ m.cantidad|stringformat:"+d" }}</b></td>
+      {% if con_saldos %}<td class="t-num"><b>{{ m.despues|default_if_none:"—" }}</b></td>{% endif %}
+    </tr>
+  {% empty %}<tr><td colspan="{% if con_saldos %}5{% else %}3{% endif %}" class="p-soft">Este lote no generó ningún movimiento (todo ya estaba con esas cantidades).</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

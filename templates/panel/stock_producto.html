@@ -65,7 +65,8 @@
   <div class="p-linea"><span>{{ m.creado|date:"d/m/Y H:i" }}</span>
     <b class="{% if m.cantidad > 0 %}pos{% else %}neg{% endif %}">{{ m.cantidad|stringformat:"+d" }}</b>
     <span>{{ m.get_tipo_display }}</span><span>{{ m.ubicacion }}</span>
-    <span class="p-soft">{{ m.usuario.username|default:"—" }}{% if m.nota %} · {{ m.nota }}{% endif %}</span></div>
+    {% if m.despues is not None %}<span class="p-soft">({{ m.antes }} → {{ m.despues }})</span>{% endif %}
+    <span class="p-soft">{{ m.usuario.username|default:"—" }}{% if m.nota %} · {{ m.nota }}{% endif %}{% if m.lote_id and user.is_staff %} · <a href="{% url 'panel:lote_detalle' m.lote_id %}">Entrada #{{ m.lote_id }}</a>{% endif %}</span></div>
   {% empty %}<p class="p-soft">Sin movimientos todavía.</p>{% endfor %}
 </div>
 {% endblock %}

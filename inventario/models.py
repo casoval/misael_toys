@@ -82,6 +82,32 @@ class Stock(models.Model):
         return f"{self.producto} @ {self.ubicacion}: {self.cantidad}"
 
 
+class LoteStock(models.Model):
+    """Una carga de stock en lote (una sola vez que se toca «Guardar todo»).
+
+    Agrupa todos los movimientos que produjo, para poder revisarla después: quién la hizo,
+    cuándo, en qué modo (sumar / fijar), la nota y qué cantidad quedó en cada producto."""
+
+    SUMAR = "sumar"
+    FIJAR = "fijar"
+    MODOS = [(SUMAR, "Sumar"), (FIJAR, "Fijar (conteo)")]
+
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="lotes_stock")
+    modo = models.CharField(max_length=6, choices=MODOS, default=SUMAR)
+    nota = models.CharField(max_length=200, blank=True)
+    aplicados = models.PositiveIntegerField(default=0, help_text="Cantidades que cambiaron el stock")
+    sin_cambio = models.PositiveIntegerField(default=0, help_text="Cantidades que ya eran iguales (modo fijar)")
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Lote de stock"
+        verbose_name_plural = "Lotes de stock"
+        ordering = ["-creado", "-id"]
+
+    def __str__(self):
+        return f"Lote #{self.pk} ({self.get_modo_display()})"
+
+
 class MovimientoStock(models.Model):
     """Historial de cada cambio de stock (quién, cuándo, por qué).
     `cantidad` es con signo: positivo entra, negativo sale."""
@@ -108,6 +134,10 @@ class MovimientoStock(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     nota = models.CharField(max_length=250, blank=True)
     venta = models.ForeignKey("Venta", null=True, blank=True, on_delete=models.SET_NULL, related_name="movimientos")
+    lote = models.ForeignKey(LoteStock, null=True, blank=True, on_delete=models.SET_NULL, related_name="movimientos")
+    # Lo que había y lo que quedó en esa ubicación (nulos en movimientos anteriores a este cambio).
+    antes = models.IntegerField(null=True, blank=True)
+    despues = models.IntegerField(null=True, blank=True)
     creado = models.DateTimeField(auto_now_add=True)
 
     class Meta:

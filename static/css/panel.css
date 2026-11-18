@@ -460,3 +460,13 @@ kbd { background: #f0ece2; border: 1px solid #d8d1bf; border-radius: .25rem; pad
   .p-tres .p-usar-sug { grid-column: 1 / -1; }
   .p-pieza-det .precio { text-align: left; flex: 1 1 100%; }
 }
+
+/* Carga en lote: vista previa y lotes */
+.p-prev { display: block; font-size: .68rem; color: var(--teal-dark); font-weight: 700; text-align: right; }
+.p-tabla-lote td.t-num, .p-tabla-lote th.t-num { text-align: right; white-space: nowrap; }
+.p-tabla-lote .pos { color: #2e8b3d; }
+.p-tabla-lote .neg { color: #c0392b; }
+.p-monto.neg { color: #c0392b; }
+.p-fila-lote { display: flex; gap: .5rem; align-items: stretch; }
+.p-fila-lote .p-fila-venta { flex: 1; min-width: 0; }
+.p-fila-lote .p-pdf { align-self: center; white-space: nowrap; }
